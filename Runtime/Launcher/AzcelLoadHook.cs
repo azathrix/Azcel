@@ -10,6 +10,7 @@ namespace Azcel
     /// Azcel 数据加载钩子 - 在 Start 阶段之后加载配置数据
     /// 可以通过继承此类并重写方法来自定义加载行为
     /// </summary>
+    [Register]
     [HookTarget("Launcher", "Start")]
     public class AzcelLoadHook : IAfterLauncherPhaseHook
     {
