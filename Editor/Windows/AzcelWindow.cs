@@ -1,0 +1,167 @@
+using System.IO;
+using Azathrix.EnvInstaller.Editor.UI;
+using Azathrix.Framework.Tools;
+using Cysharp.Threading.Tasks;
+using UnityEditor;
+using UnityEngine;
+
+namespace Azcel.Editor
+{
+    /// <summary>
+    /// Azcel 编辑器窗口
+    /// </summary>
+    public class AzcelWindow : EditorWindow
+    {
+        private Vector2 _scrollPos;
+        private string[] _envIds = new[] { "ExcelDataReader.DataSet", "ExcelDataReader" };
+
+        [MenuItem("Azathrix/Azcel/配置窗口")]
+        public static void ShowWindow()
+        {
+            var window = GetWindow<AzcelWindow>("Azcel");
+            window.minSize = new Vector2(400, 300);
+        }
+
+        [MenuItem("Azathrix/Azcel/转换配置 &`")]
+        public static void ConvertConfig()
+        {
+            if (!CheckEnvironment(out var message))
+            {
+                EditorUtility.DisplayDialog("Azcel", message, "确定");
+                return;
+            }
+
+            RunConvert().Forget();
+        }
+
+        private static async UniTaskVoid RunConvert()
+        {
+            var converter = new ConfigConverter();
+            var context = new ConvertContext();
+            await converter.ExecuteAsync(context);
+        }
+
+        private void OnGUI()
+        {
+            if (!EnvDependencyUI.DrawDependencyCheck(_envIds))
+                return;
+
+            DrawToolbar();
+
+            _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
+            DrawSettings();
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawToolbar()
+        {
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+
+            if (GUILayout.Button("转换配置", EditorStyles.toolbarButton, GUILayout.Width(80)))
+                ConvertConfig();
+
+            GUILayout.FlexibleSpace();
+
+            if (GUILayout.Button("设置", EditorStyles.toolbarButton, GUILayout.Width(50)))
+                Selection.activeObject = AzcelSettings.Instance;
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawSettings()
+        {
+            var settings = AzcelSettings.Instance;
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Excel目录", EditorStyles.boldLabel);
+
+            EditorGUI.BeginChangeCheck();
+
+            // 多目录列表
+            for (int i = 0; i < settings.excelPaths.Count; i++)
+            {
+                EditorGUILayout.BeginHorizontal();
+
+                settings.excelPaths[i] = EditorGUILayout.TextField(settings.excelPaths[i]);
+
+                if (GUILayout.Button("...", GUILayout.Width(30)))
+                {
+                    var path = EditorUtility.OpenFolderPanel("选择Excel目录", settings.excelPaths[i], "");
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        // 转换为相对路径
+                        if (path.StartsWith(Application.dataPath))
+                            path = "Assets" + path.Substring(Application.dataPath.Length);
+                        settings.excelPaths[i] = path;
+                    }
+                }
+
+                if (GUILayout.Button("打开", GUILayout.Width(40)))
+                {
+                    if (Directory.Exists(settings.excelPaths[i]))
+                        EditorUtility.RevealInFinder(settings.excelPaths[i]);
+                }
+
+                if (settings.excelPaths.Count > 1 && GUILayout.Button("-", GUILayout.Width(25)))
+                {
+                    settings.excelPaths.RemoveAt(i);
+                    i--;
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (GUILayout.Button("添加目录", GUILayout.Width(80)))
+                settings.excelPaths.Add("Assets/Excel");
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("输出配置", EditorStyles.boldLabel);
+
+            DrawPathField("代码输出目录", ref settings.codeOutputPath);
+            DrawPathField("数据输出目录", ref settings.dataOutputPath);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("代码生成", EditorStyles.boldLabel);
+
+            settings.codeNamespace = EditorGUILayout.TextField("命名空间", settings.codeNamespace);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("数据格式", EditorStyles.boldLabel);
+
+            settings.dataFormat = (DataFormat)EditorGUILayout.EnumPopup("输出格式", settings.dataFormat);
+            settings.arraySeparator = EditorGUILayout.TextField("数组分隔符", settings.arraySeparator);
+            settings.objectSeparator = EditorGUILayout.TextField("对象分隔符", settings.objectSeparator);
+
+            if (EditorGUI.EndChangeCheck())
+                EditorUtility.SetDirty(settings);
+        }
+
+        private void DrawPathField(string label, ref string path)
+        {
+            EditorGUILayout.BeginHorizontal();
+            path = EditorGUILayout.TextField(label, path);
+            if (GUILayout.Button("...", GUILayout.Width(30)))
+            {
+                var selected = EditorUtility.OpenFolderPanel(label, path, "");
+                if (!string.IsNullOrEmpty(selected))
+                {
+                    if (selected.StartsWith(Application.dataPath))
+                        selected = "Assets" + selected.Substring(Application.dataPath.Length);
+                    path = selected;
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private static bool CheckEnvironment(out string message)
+        {
+#if AZCEL_EXCEL_READER
+            message = string.Empty;
+            return true;
+#else
+            message = "ExcelDataReader 未安装。\n请通过 Azathrix/环境管理器 安装依赖。";
+            return false;
+#endif
+        }
+    }
+}

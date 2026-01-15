@@ -1,0 +1,23 @@
+{
+    "name": "Azcel.Editor",
+    "rootNamespace": "Azcel",
+    "references": [
+        "Azcel",
+        "Azathrix.Framework",
+        "Azathrix.Framework.Editor",
+        "Azathrix.EnvInstaller.Editor",
+        "UniTask",
+        "Azathrix.Framework.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
