@@ -9,6 +9,7 @@ namespace Azcel.Editor
     /// <summary>
     /// 数据导出阶段
     /// </summary>
+    [Register]
     [PhaseId("DataExport")]
     public class DataExportPhase : IConvertPhase
     {

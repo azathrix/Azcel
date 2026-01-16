@@ -6,17 +6,12 @@ using Cysharp.Threading.Tasks;
 
 namespace Azcel
 {
-    /// <summary>
-    /// Azcel 数据加载钩子 - 在 Start 阶段之后加载配置数据
-    /// 可以通过继承此类并重写方法来自定义加载行为
-    /// </summary>
     [Register]
-    [HookTarget("Launcher", "Start")]
-    public class AzcelLoadHook : IAfterLauncherPhaseHook
+    public class AzceLoadPhase : ILauncherPhase
     {
-        public int Order => 0;
-
-        public async UniTask OnAfterAsync(LauncherContext context)
+        
+        public int Order => 400;
+        public async UniTask ExecuteAsync(LauncherContext context)
         {
             var azcel = AzathrixFramework.GetSystem<AzcelSystem>();
             if (azcel == null)
@@ -33,6 +28,8 @@ namespace Azcel
 
             await LoadAllDataAsync(azcel);
         }
+
+      
 
         /// <summary>
         /// 加载所有数据（可重写以自定义加载逻辑）

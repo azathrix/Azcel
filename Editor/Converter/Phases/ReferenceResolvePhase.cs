@@ -8,6 +8,7 @@ namespace Azcel.Editor
     /// <summary>
     /// 引用解析阶段 - 验证表引用和枚举引用
     /// </summary>
+    [Register]
     [PhaseId("ReferenceResolve")]
     public class ReferenceResolvePhase : IConvertPhase
     {

@@ -8,6 +8,7 @@ namespace Azcel.Editor
     /// <summary>
     /// 配置转换器
     /// </summary>
+    [Register]
     [PipelineId("Azcel.Converter")]
     [PipelineDisplayName("Azcel配置转换")]
     public class ConfigConverter : PipelineBase<IConvertPhase, ConvertContext>

@@ -10,6 +10,7 @@ namespace Azcel.Editor
     /// 表合并阶段 - 合并同名表
     /// </summary>
     [PhaseId("TableMerge")]
+    [Register]
     public class TableMergePhase : IConvertPhase
     {
         public int Order => 200;

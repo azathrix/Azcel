@@ -15,6 +15,7 @@ namespace Azcel.Editor
     /// Excel解析阶段
     /// </summary>
     [PhaseId("ExcelParse")]
+    [Register]
     public class ExcelParsePhase : IConvertPhase
     {
         public int Order => 100;

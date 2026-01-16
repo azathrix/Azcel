@@ -9,6 +9,7 @@ namespace Azcel.Editor
     /// 表继承阶段 - 处理表继承
     /// </summary>
     [PhaseId("Inheritance")]
+    [Register]
     public class InheritancePhase : IConvertPhase
     {
         public int Order => 250;

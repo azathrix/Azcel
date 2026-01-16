@@ -11,6 +11,7 @@ namespace Azcel.Editor
     /// 代码生成阶段
     /// </summary>
     [PhaseId("CodeGen")]
+    [Register]
     public class CodeGenPhase : IConvertPhase
     {
         public int Order => 400;
