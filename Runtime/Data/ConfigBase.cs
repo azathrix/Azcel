@@ -1,93 +1,165 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+using System.IO;
+using System.Reflection;
 
 namespace Azcel
 {
     /// <summary>
-    /// 配置基类
+    /// 配置基类（行级）
     /// </summary>
     public abstract class ConfigBase
     {
+        private static readonly Dictionary<Type, Dictionary<string, MemberInfo>> MemberCache = new();
+        private static readonly object MemberCacheLock = new();
+
         /// <summary>
         /// 配置名
         /// </summary>
         public abstract string ConfigName { get; }
 
         /// <summary>
-        /// 行数
+        /// 按字段名获取值（用于 field_keymap 或反射回退）
         /// </summary>
-        public abstract int Count { get; }
+        public T GetValue<T>(string fieldName)
+        {
+            return TryGetValue(fieldName, out T value) ? value : default;
+        }
 
         /// <summary>
-        /// 解析数据（由生成代码实现，高性能低GC）
+        /// 按字段名尝试获取值
         /// </summary>
-        public abstract void ParseData(byte[] data);
+        public bool TryGetValue<T>(string fieldName, out T value)
+        {
+            value = default;
+            if (string.IsNullOrEmpty(fieldName))
+                return false;
+
+            return TryGetValueInternal(fieldName, out value);
+        }
+
+        /// <summary>
+        /// 由子类覆盖以提供更高效的取值方式（如字段字典）
+        /// </summary>
+        protected virtual bool TryGetValueInternal<T>(string fieldName, out T value)
+        {
+            value = default;
+            var type = GetType();
+            var members = GetMemberMap(type);
+            if (!members.TryGetValue(fieldName, out var member))
+                return false;
+
+            object raw = null;
+            if (member is PropertyInfo prop)
+            {
+                if (prop.GetMethod == null)
+                    return false;
+                raw = prop.GetValue(this);
+            }
+            else if (member is FieldInfo field)
+            {
+                raw = field.GetValue(this);
+            }
+
+            if (raw == null)
+                return false;
+
+            return TryConvertValue(raw, out value);
+        }
+
+        private static Dictionary<string, MemberInfo> GetMemberMap(Type type)
+        {
+            lock (MemberCacheLock)
+            {
+                if (MemberCache.TryGetValue(type, out var cached))
+                    return cached;
+
+                var map = new Dictionary<string, MemberInfo>(StringComparer.OrdinalIgnoreCase);
+                var members = type.GetMembers(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                foreach (var member in members)
+                {
+                    if (member.MemberType != MemberTypes.Field && member.MemberType != MemberTypes.Property)
+                        continue;
+
+                    if (member is PropertyInfo prop && prop.GetMethod == null)
+                        continue;
+
+                    if (!map.ContainsKey(member.Name))
+                        map[member.Name] = member;
+                }
+
+                MemberCache[type] = map;
+                return map;
+            }
+        }
+
+        protected static bool TryConvertValue<T>(object raw, out T value)
+        {
+            value = default;
+            if (raw == null)
+                return false;
+
+            if (raw is T typed)
+            {
+                value = typed;
+                return true;
+            }
+
+            var targetType = typeof(T);
+            try
+            {
+                if (targetType.IsEnum)
+                {
+                    if (raw is string str)
+                    {
+                        value = (T)Enum.Parse(targetType, str, true);
+                        return true;
+                    }
+
+                    var underlying = Convert.ChangeType(raw, Enum.GetUnderlyingType(targetType));
+                    value = (T)Enum.ToObject(targetType, underlying);
+                    return true;
+                }
+
+                if (targetType == typeof(Guid))
+                {
+                    if (raw is Guid guid)
+                    {
+                        value = (T)(object)guid;
+                        return true;
+                    }
+
+                    if (raw is string guidStr && Guid.TryParse(guidStr, out var parsedGuid))
+                    {
+                        value = (T)(object)parsedGuid;
+                        return true;
+                    }
+                }
+
+                value = (T)Convert.ChangeType(raw, targetType);
+                return true;
+            }
+            catch
+            {
+                value = default;
+                return false;
+            }
+        }
     }
 
     /// <summary>
-    /// 泛型配置基类（高性能）
+    /// 行级配置基类（以主键定位）
     /// </summary>
-    public abstract class ConfigBase<TRow, TKey> : ConfigBase
-        where TRow : struct
+    public abstract class ConfigBase<TKey> : ConfigBase
     {
-        protected TRow[] _rows = Array.Empty<TRow>();
-        protected Dictionary<TKey, int> _keyIndex = new();
-
-        public override int Count => _rows.Length;
+        /// <summary>
+        /// 主键
+        /// </summary>
+        public TKey Id { get; protected set; }
 
         /// <summary>
-        /// 所有行（零GC遍历）
+        /// 反序列化（由生成代码实现）
         /// </summary>
-        public ReadOnlySpan<TRow> All => _rows;
-
-        /// <summary>
-        /// 通过主键获取行（零拷贝）
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ref TRow GetByKeyRef(TKey key)
-        {
-            if (_keyIndex.TryGetValue(key, out var index))
-                return ref _rows[index];
-            throw new KeyNotFoundException($"Key {key} not found in config {ConfigName}");
-        }
-
-        /// <summary>
-        /// 尝试通过主键获取行
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool TryGetByKey(TKey key, out TRow row)
-        {
-            if (_keyIndex.TryGetValue(key, out var index))
-            {
-                row = _rows[index];
-                return true;
-            }
-            row = default;
-            return false;
-        }
-
-        /// <summary>
-        /// 检查主键是否存在
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool ContainsKey(TKey key) => _keyIndex.ContainsKey(key);
-
-        /// <summary>
-        /// 设置数据（由解析代码调用）
-        /// </summary>
-        protected void SetData(TRow[] rows, Dictionary<TKey, int> keyIndex)
-        {
-            _rows = rows;
-            _keyIndex = keyIndex;
-            OnDataLoaded();
-        }
-
-        /// <summary>
-        /// 数据加载完成后调用（子类可重写以构建索引）
-        /// </summary>
-        protected virtual void OnDataLoaded()
-        {
-        }
+        public abstract void Deserialize(BinaryReader reader);
     }
 }

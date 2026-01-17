@@ -9,9 +9,9 @@ namespace Azcel
         /// <summary>
         /// 解析配置数据
         /// </summary>
-        /// <param name="config">目标配置对象</param>
+        /// <param name="config">目标全局配置对象</param>
         /// <param name="data">二进制数据</param>
-        void Parse(ConfigBase config, byte[] data);
+        void Parse(GlobalConfig config, byte[] data);
     }
 
     /// <summary>
@@ -21,7 +21,7 @@ namespace Azcel
     {
         public static readonly DefaultConfigParser Instance = new();
 
-        public void Parse(ConfigBase config, byte[] data)
+        public void Parse(GlobalConfig config, byte[] data)
         {
             // 调用生成代码的解析方法
             config.ParseData(data);

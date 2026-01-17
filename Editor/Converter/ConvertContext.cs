@@ -9,6 +9,59 @@ namespace Azcel.Editor
     /// </summary>
     public class ConvertContext : PipelineContext
     {
+        public sealed class PerfRecord
+        {
+            public string Phase { get; }
+            public string Kind { get; }
+            public string Name { get; }
+            public int Rows { get; }
+            public long Milliseconds { get; }
+
+            public PerfRecord(string phase, string kind, string name, int rows, long milliseconds)
+            {
+                Phase = phase;
+                Kind = kind;
+                Name = name;
+                Rows = rows;
+                Milliseconds = milliseconds;
+            }
+        }
+
+        /// <summary>
+        /// Excel 临时目录（非空则覆盖设置里的 excelPaths）
+        /// </summary>
+        public string TempExcelPath { get; set; }
+
+        /// <summary>
+        /// 临时代码输出目录
+        /// </summary>
+        public string TempCodeOutputPath { get; set; }
+
+        /// <summary>
+        /// 临时数据输出目录
+        /// </summary>
+        public string TempDataOutputPath { get; set; }
+
+        /// <summary>
+        /// 跳过 AssetDatabase.Refresh（用于测试）
+        /// </summary>
+        public bool SkipAssetRefresh { get; set; }
+
+        /// <summary>
+        /// 性能记录
+        /// </summary>
+        public List<PerfRecord> PerfRecords { get; } = new();
+
+        /// <summary>
+        /// 阶段总耗时
+        /// </summary>
+        public Dictionary<string, long> PhaseTotals { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 导出数据大小（按配置名）
+        /// </summary>
+        public Dictionary<string, long> DataSizes { get; } = new(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>
         /// 解析后的表定义
         /// </summary>
@@ -40,6 +93,7 @@ namespace Azcel.Editor
         public void AddError(string message)
         {
             Errors.Add(message);
+            Aborted = true;
         }
 
         /// <summary>
@@ -48,6 +102,25 @@ namespace Azcel.Editor
         public void AddWarning(string message)
         {
             Warnings.Add(message);
+        }
+
+        public void AddPerfRecord(string phase, string kind, string name, int rows, long milliseconds)
+        {
+            PerfRecords.Add(new PerfRecord(phase, kind, name, rows, milliseconds));
+        }
+
+        public void SetPhaseTotal(string phase, long milliseconds)
+        {
+            if (string.IsNullOrEmpty(phase))
+                return;
+            PhaseTotals[phase] = milliseconds;
+        }
+
+        public void SetDataSize(string configName, long bytes)
+        {
+            if (string.IsNullOrEmpty(configName))
+                return;
+            DataSizes[configName] = Math.Max(0, bytes);
         }
     }
 
@@ -68,6 +141,7 @@ namespace Azcel.Editor
         public List<string> IndexFields { get; } = new();
         public string ArraySeparator { get; set; } = "|";
         public string ObjectSeparator { get; set; } = ",";
+        public bool FieldKeymap { get; set; }
 
         // 行配置
         public int FieldRow { get; set; } = 2;
@@ -84,6 +158,7 @@ namespace Azcel.Editor
         public string Name { get; set; }
         public string Type { get; set; }
         public string Comment { get; set; }
+        public Dictionary<string, string> Options { get; } = new(StringComparer.OrdinalIgnoreCase);
         public bool IsKey { get; set; }
         public bool IsIndex { get; set; }
         public bool IsTableRef { get; set; }
@@ -97,6 +172,7 @@ namespace Azcel.Editor
     /// </summary>
     public class RowData
     {
+        public int RowIndex { get; set; }
         public Dictionary<string, string> Values { get; } = new();
     }
 

@@ -6,11 +6,21 @@ namespace Azcel
     /// <summary>
     /// 全局配置基类（KV类型）
     /// </summary>
-    public abstract class GlobalConfig : ConfigBase
+    public abstract class GlobalConfig
     {
         protected Dictionary<string, object> _values = new();
 
-        public override int Count => _values.Count;
+        public int Count => _values.Count;
+
+        /// <summary>
+        /// 配置名
+        /// </summary>
+        public abstract string ConfigName { get; }
+
+        /// <summary>
+        /// 解析数据
+        /// </summary>
+        public abstract void ParseData(byte[] data);
 
         /// <summary>
         /// 获取配置值

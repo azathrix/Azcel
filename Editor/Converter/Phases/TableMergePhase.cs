@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Azathrix.Framework.Core.Pipeline;
@@ -42,6 +43,8 @@ namespace Azcel.Editor
                         merged.Rows.Add(row);
                     }
 
+                    MergeFieldOptions(merged, other);
+
                     Log.Info($"[TableMerge] 合并表 {merged.Name}: {other.ExcelPath}");
                 }
 
@@ -53,6 +56,26 @@ namespace Azcel.Editor
 
             Log.Info($"[TableMerge] 合并完成: {context.Tables.Count} 表");
             return UniTask.CompletedTask;
+        }
+
+        private static void MergeFieldOptions(TableDefinition target, TableDefinition source)
+        {
+            if (target == null || source == null)
+                return;
+
+            foreach (var field in source.Fields)
+            {
+                var existing = target.Fields.FirstOrDefault(x =>
+                    string.Equals(x.Name, field.Name, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
+                    continue;
+
+                if (string.IsNullOrEmpty(existing.Comment) && !string.IsNullOrEmpty(field.Comment))
+                    existing.Comment = field.Comment;
+
+                foreach (var kv in field.Options)
+                    existing.Options[kv.Key] = kv.Value;
+            }
         }
     }
 }

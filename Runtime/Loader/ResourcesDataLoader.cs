@@ -1,9 +1,10 @@
+using Azathrix.Framework.Core;
 using UnityEngine;
 
 namespace Azcel
 {
     /// <summary>
-    /// 默认数据加载器（从Resources加载）
+    /// 默认数据加载器（使用框架的加载器加载）
     /// </summary>
     public class ResourcesDataLoader : IDataLoader
     {
@@ -17,7 +18,7 @@ namespace Azcel
         public byte[] Load(string configName)
         {
             var path = $"{_dataPath}/{configName}";
-            var asset = Resources.Load<TextAsset>(path);
+            var asset = AzathrixFramework.ResourcesLoader.Load<TextAsset>(path);
             return asset?.bytes;
         }
     }

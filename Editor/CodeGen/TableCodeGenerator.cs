@@ -9,196 +9,179 @@ namespace Azcel.Editor
     /// </summary>
     public static class TableCodeGenerator
     {
-        public static string Generate(TableDefinition table, string ns, DataFormat format)
+        public static string Generate(TableDefinition table, string ns)
         {
             var sb = new StringBuilder();
-            var rowName = $"{table.Name}Row";
-
             sb.AppendLine("// 此文件由 Azcel 自动生成，请勿手动修改");
             sb.AppendLine();
             sb.AppendLine("using System;");
             sb.AppendLine("using System.Collections.Generic;");
             sb.AppendLine("using System.IO;");
-            sb.AppendLine("using System.Runtime.CompilerServices;");
             sb.AppendLine("using Azcel;");
+            sb.AppendLine("using Azathrix.Framework.Core;");
             sb.AppendLine();
             sb.AppendLine($"namespace {ns}");
             sb.AppendLine("{");
-
-            // 生成行结构体
-            GenerateRowStruct(sb, table, rowName, ns);
-
-            sb.AppendLine();
-
             // 生成配置类
-            GenerateConfigClass(sb, table, rowName, ns, format);
+            GenerateConfigClass(sb, table, ns);
 
             sb.AppendLine("}");
 
             return sb.ToString();
         }
 
-        private static void GenerateRowStruct(StringBuilder sb, TableDefinition table, string rowName, string ns)
-        {
-            sb.AppendLine($"    public struct {rowName}");
-            sb.AppendLine("    {");
-
-            foreach (var field in table.Fields)
-            {
-                var csharpType = GetCSharpType(field, ns);
-
-                if (!string.IsNullOrEmpty(field.Comment))
-                    sb.AppendLine($"        /// <summary>{field.Comment}</summary>");
-
-                // 表引用字段：存储ID，提供属性访问
-                if (field.IsTableRef)
-                {
-                    sb.AppendLine($"        private int _{field.Name}Id;");
-                    sb.AppendLine($"        public ref {field.RefTableName}Row {field.Name} => ref {field.RefTableName}Config.Get(_{field.Name}Id);");
-                }
-                else
-                {
-                    sb.AppendLine($"        public {csharpType} {field.Name};");
-                }
-            }
-
-            sb.AppendLine("    }");
-        }
-
-        private static void GenerateConfigClass(StringBuilder sb, TableDefinition table, string rowName, string ns, DataFormat format)
+        private static void GenerateConfigClass(StringBuilder sb, TableDefinition table, string ns)
         {
             var keyType = GetCSharpType(table.KeyType);
+            var keyField = table.Fields.FirstOrDefault(f => f.IsKey) ?? table.Fields.FirstOrDefault();
+            var keyFieldName = keyField?.Name ?? "Id";
+            var keyIsId = string.Equals(keyFieldName, "Id", System.StringComparison.OrdinalIgnoreCase);
 
-            sb.AppendLine($"    public class {table.Name}Config : ConfigBase<{rowName}, {keyType}>");
+            sb.AppendLine($"    public class {table.Name} : ConfigBase<{keyType}>");
             sb.AppendLine("    {");
             sb.AppendLine($"        public override string ConfigName => \"{table.Name}\";");
             sb.AppendLine();
 
-            // 静态访问
-            sb.AppendLine($"        public static {table.Name}Config I => Azathrix.Framework.Core.AzathrixFramework.GetSystem<AzcelSystem>()?.Get<{table.Name}Config>();");
-            sb.AppendLine();
-
-            // 静态Get方法
-            sb.AppendLine("        [MethodImpl(MethodImplOptions.AggressiveInlining)]");
-            sb.AppendLine($"        public static ref {rowName} Get({keyType} key) => ref I.GetByKeyRef(key);");
-            sb.AppendLine();
-
-            // 生成索引字段的查询方法
-            foreach (var indexField in table.IndexFields)
+            if (table.FieldKeymap)
             {
-                var field = table.Fields.FirstOrDefault(f => f.Name == indexField);
-                if (field == null) continue;
-
-                var indexType = GetCSharpType(field, ns);
-                sb.AppendLine($"        private Dictionary<{indexType}, List<int>> _{indexField}Index;");
-                sb.AppendLine();
-                sb.AppendLine($"        public IReadOnlyList<{rowName}> GetBy{indexField}({indexType} value)");
-                sb.AppendLine("        {");
-                sb.AppendLine($"            if (_{indexField}Index == null) return Array.Empty<{rowName}>();");
-                sb.AppendLine($"            if (!_{indexField}Index.TryGetValue(value, out var indices)) return Array.Empty<{rowName}>();");
-                sb.AppendLine($"            var result = new {rowName}[indices.Count];");
-                sb.AppendLine("            for (int i = 0; i < indices.Count; i++)");
-                sb.AppendLine("                result[i] = _rows[indices[i]];");
-                sb.AppendLine("            return result;");
-                sb.AppendLine("        }");
+                sb.AppendLine("        private Dictionary<string, object> _fieldKeymap;");
+                sb.AppendLine("        private bool _fieldKeymapBuilt;");
                 sb.AppendLine();
             }
-
-            // ParseData - 由生成代码实现高性能解析
-            sb.AppendLine("        public override void ParseData(byte[] data)");
-            sb.AppendLine("        {");
-            sb.AppendLine("            using var reader = new BinaryReader(new MemoryStream(data));");
-            sb.AppendLine("            var count = reader.ReadInt32();");
-            sb.AppendLine($"            var rows = new {rowName}[count];");
-            sb.AppendLine($"            var keyIndex = new Dictionary<{keyType}, int>(count);");
-            sb.AppendLine();
-            sb.AppendLine("            for (int i = 0; i < count; i++)");
-            sb.AppendLine("            {");
-            sb.AppendLine($"                var row = new {rowName}();");
 
             foreach (var field in table.Fields)
             {
-                var readCode = GetBinaryReadCode(field);
+                if (IsSkipped(field))
+                    continue;
+
+                var isKeyField = keyField != null && field.Name == keyFieldName;
                 if (field.IsTableRef)
-                    sb.AppendLine($"                row._{field.Name}Id = reader.ReadInt32();");
+                {
+                    var idFieldName = $"{field.Name}Id";
+                    if (!string.IsNullOrEmpty(field.Comment))
+                        sb.AppendLine($"        /// <summary>{field.Comment}</summary>");
+                    if (table.IndexFields.Contains(field.Name))
+                        sb.AppendLine("        [ConfigIndex]");
+                    sb.AppendLine($"        private {field.RefTableName} _{field.Name}Cache;");
+                    sb.AppendLine($"        private bool _{field.Name}CacheReady;");
+                    sb.AppendLine($"        public int {idFieldName} {{ get; private set; }}");
+                    sb.AppendLine($"        public {field.RefTableName} {field.Name}");
+                    sb.AppendLine("        {");
+                    sb.AppendLine("            get");
+                    sb.AppendLine("            {");
+                    sb.AppendLine($"                if (!_{field.Name}CacheReady)");
+                    sb.AppendLine("                {");
+                    sb.AppendLine($"                    _{field.Name}CacheReady = true;");
+                    sb.AppendLine($"                    var table = AzathrixFramework.GetSystem<AzcelSystem>()?.GetTable<{field.RefTableName}Table>();");
+                    sb.AppendLine($"                    _{field.Name}Cache = table?.GetById({idFieldName});");
+                    sb.AppendLine("                }");
+                    sb.AppendLine($"                return _{field.Name}Cache;");
+                    sb.AppendLine("            }");
+                    sb.AppendLine("        }");
+                }
                 else
-                    sb.AppendLine($"                row.{field.Name} = {readCode};");
+                {
+                    var csharpType = GetCSharpType(field, ns);
+                    if (!isKeyField || !keyIsId)
+                    {
+                        if (!string.IsNullOrEmpty(field.Comment))
+                            sb.AppendLine($"        /// <summary>{field.Comment}</summary>");
+                        if (table.IndexFields.Contains(field.Name))
+                            sb.AppendLine("        [ConfigIndex]");
+                        sb.AppendLine($"        public {csharpType} {field.Name} {{ get; private set; }}");
+                    }
+                }
             }
 
-            var keyField = table.Fields.FirstOrDefault(f => f.IsKey) ?? table.Fields.FirstOrDefault();
-            if (keyField != null)
-            {
-                if (keyField.IsTableRef)
-                    sb.AppendLine($"                keyIndex[row._{keyField.Name}Id] = i;");
-                else
-                    sb.AppendLine($"                keyIndex[row.{keyField.Name}] = i;");
-            }
-
-            sb.AppendLine("                rows[i] = row;");
-            sb.AppendLine("            }");
             sb.AppendLine();
-            sb.AppendLine("            SetData(rows, keyIndex);");
+            sb.AppendLine("        public override void Deserialize(BinaryReader reader)");
+            sb.AppendLine("        {");
+            foreach (var field in table.Fields)
+            {
+                if (IsSkipped(field))
+                    continue;
+
+                var readCode = GetBinaryReadCode(field);
+                var isKeyField = keyField != null && field.Name == keyFieldName;
+                if (field.IsTableRef)
+                {
+                    sb.AppendLine($"            {field.Name}Id = reader.ReadInt32();");
+                    if (isKeyField)
+                        sb.AppendLine($"            Id = {field.Name}Id;");
+                }
+                else if (isKeyField && keyIsId)
+                {
+                    sb.AppendLine($"            Id = {readCode};");
+                }
+                else
+                {
+                    sb.AppendLine($"            {field.Name} = {readCode};");
+                }
+            }
+
+            if (keyField != null && !(keyField.IsTableRef && string.Equals(keyFieldName, "Id", System.StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!keyIsId && !IsSkipped(keyField))
+                {
+                    if (keyField.IsTableRef)
+                        sb.AppendLine($"            Id = {keyFieldName}Id;");
+                    else
+                        sb.AppendLine($"            Id = {keyFieldName};");
+                }
+            }
+
             sb.AppendLine("        }");
 
-            // OnDataLoaded - 构建索引
-            if (table.IndexFields.Count > 0)
+            if (table.FieldKeymap)
             {
                 sb.AppendLine();
-                sb.AppendLine("        protected override void OnDataLoaded()");
+                sb.AppendLine("        protected override bool TryGetValueInternal<T>(string fieldName, out T value)");
                 sb.AppendLine("        {");
+                sb.AppendLine("            value = default;");
+                sb.AppendLine("            if (string.IsNullOrEmpty(fieldName))");
+                sb.AppendLine("                return false;");
+                sb.AppendLine();
+                sb.AppendLine("            EnsureFieldKeymap();");
+                sb.AppendLine("            if (_fieldKeymap == null || !_fieldKeymap.TryGetValue(fieldName, out var raw))");
+                sb.AppendLine("                return false;");
+                sb.AppendLine();
+                sb.AppendLine("            return TryConvertValue(raw, out value);");
+                sb.AppendLine("        }");
+                sb.AppendLine();
+                sb.AppendLine("        private void EnsureFieldKeymap()");
+                sb.AppendLine("        {");
+                sb.AppendLine("            if (_fieldKeymapBuilt)");
+                sb.AppendLine("                return;");
+                sb.AppendLine();
+                sb.AppendLine("            _fieldKeymapBuilt = true;");
+                sb.AppendLine("            _fieldKeymap = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);");
 
-                foreach (var indexField in table.IndexFields)
+                foreach (var field in table.Fields)
                 {
-                    var field = table.Fields.FirstOrDefault(f => f.Name == indexField);
-                    if (field == null) continue;
+                    if (IsSkipped(field))
+                        continue;
 
-                    var indexType = GetCSharpType(field, ns);
-                    sb.AppendLine($"            _{indexField}Index = new Dictionary<{indexType}, List<int>>();");
-                    sb.AppendLine("            for (int i = 0; i < _rows.Length; i++)");
-                    sb.AppendLine("            {");
-                    sb.AppendLine($"                var key = _rows[i].{indexField};");
-                    sb.AppendLine($"                if (!_{indexField}Index.TryGetValue(key, out var list))");
-                    sb.AppendLine($"                    _{indexField}Index[key] = list = new List<int>();");
-                    sb.AppendLine("                list.Add(i);");
-                    sb.AppendLine("            }");
+                    var isKeyField = keyField != null && field.Name == keyFieldName;
+                    string valueExpr;
+                    if (field.IsTableRef)
+                        valueExpr = $"{field.Name}Id";
+                    else if (isKeyField && keyIsId)
+                        valueExpr = "Id";
+                    else
+                        valueExpr = field.Name;
+
+                    sb.AppendLine($"            _fieldKeymap[\"{field.Name}\"] = {valueExpr};");
                 }
 
                 sb.AppendLine("        }");
             }
 
             sb.AppendLine("    }");
-        }
 
-        public static string GenerateRegister(List<TableDefinition> tables, List<GlobalDefinition> globals, string ns, DataFormat format)
-        {
-            var sb = new StringBuilder();
-
-            sb.AppendLine("// 此文件由 Azcel 自动生成，请勿手动修改");
             sb.AppendLine();
-            sb.AppendLine("using Azcel;");
-            sb.AppendLine();
-            sb.AppendLine($"namespace {ns}");
-            sb.AppendLine("{");
-            sb.AppendLine("    public static class ConfigRegister");
+            sb.AppendLine($"    public sealed class {table.Name}Table : ConfigTable<{table.Name}, {keyType}>");
             sb.AppendLine("    {");
-            sb.AppendLine("        public static void RegisterAll(AzcelSystem system)");
-            sb.AppendLine("        {");
-
-            foreach (var table in tables)
-            {
-                sb.AppendLine($"            system.RegisterConfig(new {table.Name}Config());");
-            }
-
-            foreach (var global in globals)
-            {
-                sb.AppendLine($"            system.RegisterGlobal(new GlobalConfig{global.Name}());");
-            }
-
-            sb.AppendLine("        }");
             sb.AppendLine("    }");
-            sb.AppendLine("}");
-
-            return sb.ToString();
         }
 
         private static string GetCSharpType(FieldDefinition field, string ns)
@@ -207,7 +190,7 @@ namespace Azcel.Editor
                 return field.RefEnumName;
 
             if (field.IsTableRef)
-                return $"{field.RefTableName}Row";
+                return field.RefTableName;
 
             return GetCSharpType(field.Type);
         }
@@ -225,6 +208,22 @@ namespace Azcel.Editor
 
             var parser = TypeRegistry.Get(field.Type);
             return parser?.GenerateBinaryReadCode("reader") ?? "reader.ReadString()";
+        }
+
+        private static bool IsSkipped(FieldDefinition field)
+        {
+            if (field == null)
+                return false;
+
+            if (!field.Options.TryGetValue("skip", out var value))
+                return false;
+
+            if (string.IsNullOrEmpty(value))
+                return true;
+
+            return value.Equals("true", System.StringComparison.OrdinalIgnoreCase)
+                   || value.Equals("1", System.StringComparison.OrdinalIgnoreCase)
+                   || value.Equals("yes", System.StringComparison.OrdinalIgnoreCase);
         }
     }
 }

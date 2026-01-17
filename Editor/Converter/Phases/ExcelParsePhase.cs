@@ -41,7 +41,11 @@ namespace Azcel.Editor
             var globalDataMap = new Dictionary<string, List<(GlobalDefinition def, int depth)>>();
 
             // 遍历所有Excel目录
-            foreach (var excelPath in settings.excelPaths)
+            var excelRoots = string.IsNullOrEmpty(context.TempExcelPath)
+                ? settings.excelPaths
+                : new List<string> { context.TempExcelPath };
+
+            foreach (var excelPath in excelRoots)
             {
                 if (!Directory.Exists(excelPath))
                 {
@@ -110,32 +114,70 @@ namespace Azcel.Editor
 
                 var configRow = sheet.Rows[0];
                 var tableName = configRow[0]?.ToString()?.Trim();
+                var configType = GetConfigType(configRow);
 
                 if (string.IsNullOrEmpty(tableName))
                     continue;
 
-                if (tableName.StartsWith("Enum."))
+                if (string.IsNullOrEmpty(configType))
+                    configType = "table";
+
+                var normalizedName = NormalizeConfigName(tableName, configType);
+                switch (configType)
                 {
-                    var enumDef = ParseEnumTable(sheet, tableName[5..], filePath, settings);
-                    if (!enumDataMap.ContainsKey(enumDef.Name))
-                        enumDataMap[enumDef.Name] = new List<(EnumDefinition, int)>();
-                    enumDataMap[enumDef.Name].Add((enumDef, depth));
-                }
-                else if (tableName.StartsWith("GlobalConfig."))
-                {
-                    var globalDef = ParseGlobalTable(sheet, tableName[13..], filePath, settings);
-                    if (!globalDataMap.ContainsKey(globalDef.Name))
-                        globalDataMap[globalDef.Name] = new List<(GlobalDefinition, int)>();
-                    globalDataMap[globalDef.Name].Add((globalDef, depth));
-                }
-                else
-                {
-                    var tableDef = ParseDataTable(sheet, tableName, filePath, settings);
-                    if (!tableDataMap.ContainsKey(tableDef.Name))
-                        tableDataMap[tableDef.Name] = new List<(TableDefinition, int)>();
-                    tableDataMap[tableDef.Name].Add((tableDef, depth));
+                    case "enum":
+                    {
+                        var enumDef = ParseEnumTable(sheet, normalizedName, filePath, settings);
+                        if (!enumDataMap.ContainsKey(enumDef.Name))
+                            enumDataMap[enumDef.Name] = new List<(EnumDefinition, int)>();
+                        enumDataMap[enumDef.Name].Add((enumDef, depth));
+                        break;
+                    }
+                    case "global":
+                    case "keymap":
+                    {
+                        var globalDef = ParseGlobalTable(sheet, normalizedName, filePath, settings, context);
+                        if (!globalDataMap.ContainsKey(globalDef.Name))
+                            globalDataMap[globalDef.Name] = new List<(GlobalDefinition, int)>();
+                        globalDataMap[globalDef.Name].Add((globalDef, depth));
+                        break;
+                    }
+                    default:
+                    {
+                        var tableDef = ParseDataTable(sheet, normalizedName, filePath, settings, context);
+                        if (!tableDataMap.ContainsKey(tableDef.Name))
+                            tableDataMap[tableDef.Name] = new List<(TableDefinition, int)>();
+                        tableDataMap[tableDef.Name].Add((tableDef, depth));
+                        break;
+                    }
                 }
             }
+        }
+
+        private static string GetConfigType(DataRow configRow)
+        {
+            for (int col = 1; col < configRow.ItemArray.Length; col++)
+            {
+                var param = configRow[col]?.ToString()?.Trim();
+                if (string.IsNullOrEmpty(param))
+                    continue;
+
+                var parts = param.Split(':');
+                if (parts.Length != 2)
+                    continue;
+
+                var key = parts[0].Trim().ToLower();
+                var value = parts[1].Trim().ToLower();
+                if (key == "config_type" || key == "configtype")
+                    return value;
+            }
+
+            return null;
+        }
+
+        private static string NormalizeConfigName(string rawName, string configType)
+        {
+            return string.IsNullOrEmpty(rawName) ? rawName : rawName.Trim();
         }
 
         private void MergeTables(ConvertContext context, Dictionary<string, List<(TableDefinition def, int depth)>> dataMap)
@@ -156,6 +198,13 @@ namespace Azcel.Editor
                         if (row.Values.TryGetValue(keyField, out var key) && !string.IsNullOrEmpty(key))
                             rowMap[key] = row; // 后面的覆盖前面的
                     }
+                }
+
+                for (int i = 1; i < sorted.Count; i++)
+                {
+                    MergeFieldOptions(merged, sorted[i].def);
+                    if (sorted[i].def.FieldKeymap)
+                        merged.FieldKeymap = true;
                 }
 
                 merged.Rows.Clear();
@@ -204,7 +253,7 @@ namespace Azcel.Editor
             }
         }
 
-        private TableDefinition ParseDataTable(DataTable sheet, string tableName, string filePath, AzcelSettings settings)
+        private TableDefinition ParseDataTable(DataTable sheet, string tableName, string filePath, AzcelSettings settings, ConvertContext context)
         {
             var table = new TableDefinition
             {
@@ -242,7 +291,18 @@ namespace Azcel.Editor
                     case "extends": table.ParentTable = value; break;
                     case "arrayseparator": table.ArraySeparator = value; break;
                     case "objectseparator": table.ObjectSeparator = value; break;
-                    case "index": table.IndexFields.AddRange(value.Split(',')); break;
+                    case "field_keymap":
+                    case "fieldkeymap":
+                        table.FieldKeymap = ParseBooleanFlag(value);
+                        break;
+                    case "index":
+                        foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            var trimmed = item.Trim();
+                            if (!string.IsNullOrEmpty(trimmed))
+                                table.IndexFields.Add(trimmed);
+                        }
+                        break;
                     case "fieldrow": table.FieldRow = int.Parse(value); break;
                     case "typerow": table.TypeRow = int.Parse(value); break;
                     case "commentrow": table.CommentRow = int.Parse(value); break;
@@ -250,21 +310,65 @@ namespace Azcel.Editor
                 }
             }
 
-            // 解析字段
-            var fieldRow = sheet.Rows[table.FieldRow - 1];
-            var typeRow = sheet.Rows[table.TypeRow - 1];
-            var commentRow = table.CommentRow <= sheet.Rows.Count ? sheet.Rows[table.CommentRow - 1] : null;
+            if (!IsKnownType(table.KeyType))
+            {
+                context.AddError(
+                    $"[ExcelParse] 表 {table.Name} 主键类型 {table.KeyType} 未注册 (Excel: {table.ExcelPath})");
+            }
 
+            var fieldRowIndex = NormalizeRowIndex(sheet, table.FieldRow - 1);
+            var typeRowIndex = NormalizeRowIndex(sheet, table.TypeRow - 1);
+            var dataRowIndex = NormalizeRowIndex(sheet, table.DataRow - 1);
+            var typeRowNumber = typeRowIndex + 1;
+
+            var commentRowIndex = FindMarkerRow(sheet, "#comment");
+            if (commentRowIndex < 0)
+                commentRowIndex = NormalizeRowIndex(sheet, table.CommentRow - 1);
+
+            var fieldOptionsRowIndex = FindFieldOptionsRow(sheet, fieldRowIndex, dataRowIndex);
+
+            if (fieldRowIndex < 0 || fieldRowIndex >= sheet.Rows.Count)
+                return table;
+
+            if (typeRowIndex < 0 || typeRowIndex >= sheet.Rows.Count)
+                return table;
+
+            var fieldRow = sheet.Rows[fieldRowIndex];
+            var typeRow = sheet.Rows[typeRowIndex];
+            var commentRow = commentRowIndex >= 0 && commentRowIndex < sheet.Rows.Count ? sheet.Rows[commentRowIndex] : null;
+            var commentRowHasMarker = commentRow != null && IsMarkerRow(commentRow, out var commentMarker)
+                                      && commentMarker == "#comment";
+            var optionsRow = fieldOptionsRowIndex >= 0 && fieldOptionsRowIndex < sheet.Rows.Count
+                ? sheet.Rows[fieldOptionsRowIndex]
+                : null;
+            var optionsRowHasMarker = optionsRow != null && IsMarkerRow(optionsRow, out var optionsMarker)
+                                      && optionsMarker == "#setting";
+
+            // 解析字段
             for (int col = 0; col < fieldRow.ItemArray.Length; col++)
             {
                 var fieldName = fieldRow[col]?.ToString()?.Trim();
                 if (string.IsNullOrEmpty(fieldName) || fieldName.StartsWith("#"))
                     continue;
 
-                var fieldType = col < typeRow.ItemArray.Length ? typeRow[col]?.ToString()?.Trim() : "string";
-                var comment = commentRow != null && col < commentRow.ItemArray.Length
-                    ? commentRow[col]?.ToString()?.Trim()
+                var fieldType = col < typeRow.ItemArray.Length ? typeRow[col]?.ToString()?.Trim() : "";
+                if (string.IsNullOrEmpty(fieldType))
+                {
+                    context.AddError(
+                        $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 未定义类型 (Excel: {table.ExcelPath}, 行: {typeRowNumber}, 列: {col + 1})");
+                    fieldType = "string";
+                }
+                else if (!IsKnownType(fieldType))
+                {
+                    context.AddError(
+                        $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 类型 {fieldType} 未注册 (Excel: {table.ExcelPath}, 行: {typeRowNumber}, 列: {col + 1})");
+                }
+                var commentCol = commentRowHasMarker ? col + 1 : col;
+                var comment = commentRow != null && commentCol < commentRow.ItemArray.Length
+                    ? commentRow[commentCol]?.ToString()?.Trim()
                     : "";
+                if (!string.IsNullOrEmpty(comment) && comment.StartsWith("#"))
+                    comment = "";
 
                 var field = new FieldDefinition
                 {
@@ -272,8 +376,16 @@ namespace Azcel.Editor
                     Type = fieldType ?? "string",
                     Comment = comment ?? "",
                     IsKey = fieldName.Equals(table.KeyField, StringComparison.OrdinalIgnoreCase),
-                    IsIndex = table.IndexFields.Contains(fieldName)
+                    IsIndex = table.IndexFields.Any(x => string.Equals(x, fieldName, StringComparison.OrdinalIgnoreCase))
                 };
+
+                var optionsCol = optionsRowHasMarker ? col + 1 : col;
+                if (optionsRow != null && optionsCol < optionsRow.ItemArray.Length)
+                {
+                    var optionRaw = optionsRow[optionsCol]?.ToString()?.Trim();
+                    foreach (var kv in ParseFieldOptions(optionRaw))
+                        field.Options[kv.Key] = kv.Value;
+                }
 
                 if (fieldType?.StartsWith("@") == true)
                 {
@@ -290,10 +402,16 @@ namespace Azcel.Editor
             }
 
             // 解析数据行
-            for (int row = table.DataRow - 1; row < sheet.Rows.Count; row++)
+            for (int row = dataRowIndex; row < sheet.Rows.Count; row++)
             {
                 var dataRow = sheet.Rows[row];
-                var rowData = new RowData();
+                if (IsMarkerRow(dataRow, out _))
+                    continue;
+
+                var rowData = new RowData
+                {
+                    RowIndex = row + 1
+                };
                 var hasData = false;
 
                 for (int col = 0; col < table.Fields.Count && col < dataRow.ItemArray.Length; col++)
@@ -322,6 +440,8 @@ namespace Azcel.Editor
             for (int row = DefaultDataRow - 1; row < sheet.Rows.Count; row++)
             {
                 var dataRow = sheet.Rows[row];
+                if (IsMarkerRow(dataRow, out _))
+                    continue;
                 var name = dataRow[0]?.ToString()?.Trim();
                 if (string.IsNullOrEmpty(name))
                     continue;
@@ -340,7 +460,7 @@ namespace Azcel.Editor
             return enumDef;
         }
 
-        private GlobalDefinition ParseGlobalTable(DataTable sheet, string globalName, string filePath, AzcelSettings settings)
+        private GlobalDefinition ParseGlobalTable(DataTable sheet, string globalName, string filePath, AzcelSettings settings, ConvertContext context)
         {
             var globalDef = new GlobalDefinition
             {
@@ -351,12 +471,25 @@ namespace Azcel.Editor
             for (int row = DefaultDataRow - 1; row < sheet.Rows.Count; row++)
             {
                 var dataRow = sheet.Rows[row];
+                if (IsMarkerRow(dataRow, out _))
+                    continue;
                 var key = dataRow[0]?.ToString()?.Trim();
                 if (string.IsNullOrEmpty(key))
                     continue;
 
                 var value = dataRow.ItemArray.Length > 1 ? dataRow[1]?.ToString() : "";
-                var type = dataRow.ItemArray.Length > 2 ? dataRow[2]?.ToString()?.Trim() : "string";
+                var type = dataRow.ItemArray.Length > 2 ? dataRow[2]?.ToString()?.Trim() : "";
+                if (string.IsNullOrEmpty(type))
+                {
+                    context.AddError(
+                        $"[ExcelParse] 全局 {globalName} 键 {key} 未定义类型 (Excel: {filePath}, 行: {row + 1})");
+                    type = "string";
+                }
+                else if (!IsKnownType(type))
+                {
+                    context.AddError(
+                        $"[ExcelParse] 全局 {globalName} 键 {key} 类型 {type} 未注册 (Excel: {filePath}, 行: {row + 1})");
+                }
 
                 globalDef.Values.Add(new GlobalValueDefinition
                 {
@@ -367,6 +500,179 @@ namespace Azcel.Editor
             }
 
             return globalDef;
+        }
+
+        private static void MergeFieldOptions(TableDefinition target, TableDefinition source)
+        {
+            if (target == null || source == null)
+                return;
+
+            foreach (var field in source.Fields)
+            {
+                var existing = target.Fields.FirstOrDefault(x =>
+                    string.Equals(x.Name, field.Name, StringComparison.OrdinalIgnoreCase));
+                if (existing == null)
+                    continue;
+
+                if (string.IsNullOrEmpty(existing.Comment) && !string.IsNullOrEmpty(field.Comment))
+                    existing.Comment = field.Comment;
+
+                foreach (var kv in field.Options)
+                    existing.Options[kv.Key] = kv.Value;
+            }
+        }
+
+        private static int FindMarkerRow(DataTable sheet, string marker)
+        {
+            if (sheet == null || string.IsNullOrEmpty(marker))
+                return -1;
+
+            var target = marker.Trim().ToLowerInvariant();
+            for (int i = 0; i < sheet.Rows.Count; i++)
+            {
+                if (IsMarkerRow(sheet.Rows[i], out var found) && found == target)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        private static int FindFieldOptionsRow(DataTable sheet, int startRow, int dataRowIndex)
+        {
+            if (sheet == null)
+                return -1;
+
+            var begin = Math.Max(0, startRow + 1);
+            var end = Math.Min(sheet.Rows.Count, dataRowIndex);
+
+            for (int i = begin; i < end; i++)
+            {
+                if (!IsMarkerRow(sheet.Rows[i], out var marker))
+                    continue;
+
+                if (marker == "#setting" && HasFieldOptions(sheet.Rows[i]))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        private static bool HasFieldOptions(DataRow row)
+        {
+            if (row == null)
+                return false;
+
+            for (int col = 1; col < row.ItemArray.Length; col++)
+            {
+                var value = row[col]?.ToString()?.Trim();
+                if (string.IsNullOrWhiteSpace(value))
+                    continue;
+
+                if (value.Contains(":") || value.Equals("skip", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static Dictionary<string, string> ParseFieldOptions(string raw)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(raw))
+                return result;
+
+            var parts = raw.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in parts)
+            {
+                var item = part.Trim();
+                if (string.IsNullOrEmpty(item))
+                    continue;
+
+                var kv = item.Split(new[] { ':' }, 2);
+                var key = kv[0].Trim();
+                var value = kv.Length > 1 ? kv[1].Trim() : "true";
+                if (!string.IsNullOrEmpty(key))
+                    result[key] = value;
+            }
+
+            return result;
+        }
+
+        private static bool ParseBooleanFlag(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return true;
+
+            return value.Equals("true", StringComparison.OrdinalIgnoreCase)
+                   || value.Equals("1", StringComparison.OrdinalIgnoreCase)
+                   || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsKnownType(string type)
+        {
+            if (string.IsNullOrEmpty(type))
+                return false;
+
+            if (type.StartsWith("@", StringComparison.Ordinal))
+                return true;
+            if (type.StartsWith("#", StringComparison.Ordinal))
+                return true;
+
+            if (type.EndsWith("[]", StringComparison.Ordinal))
+                return IsKnownType(type[..^2]);
+
+            if (TryParseMapType(type, out var keyType, out var valueType))
+                return IsKnownType(keyType) && IsKnownType(valueType);
+
+            return TypeRegistry.IsRegistered(type);
+        }
+
+        private static bool TryParseMapType(string type, out string keyType, out string valueType)
+        {
+            keyType = null;
+            valueType = null;
+            if (string.IsNullOrEmpty(type))
+                return false;
+
+            if (!type.StartsWith("map<", StringComparison.OrdinalIgnoreCase) || !type.EndsWith(">", StringComparison.Ordinal))
+                return false;
+
+            var inner = type[4..^1];
+            var commaIndex = inner.IndexOf(',');
+            if (commaIndex <= 0)
+                return false;
+
+            keyType = inner[..commaIndex].Trim();
+            valueType = inner[(commaIndex + 1)..].Trim();
+            return true;
+        }
+
+        private static int NormalizeRowIndex(DataTable sheet, int rowIndex)
+        {
+            if (sheet == null)
+                return rowIndex;
+
+            for (int i = Math.Max(0, rowIndex); i < sheet.Rows.Count; i++)
+            {
+                if (!IsMarkerRow(sheet.Rows[i], out _))
+                    return i;
+            }
+
+            return rowIndex;
+        }
+
+        private static bool IsMarkerRow(DataRow row, out string marker)
+        {
+            marker = null;
+            if (row == null || row.ItemArray.Length == 0)
+                return false;
+
+            var first = row[0]?.ToString()?.Trim();
+            if (string.IsNullOrEmpty(first) || !first.StartsWith("#"))
+                return false;
+
+            marker = first.ToLowerInvariant();
+            return true;
         }
 
         private static bool _encodingRegistered;

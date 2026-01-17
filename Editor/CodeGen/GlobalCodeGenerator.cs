@@ -7,7 +7,7 @@ namespace Azcel.Editor
     /// </summary>
     public static class GlobalCodeGenerator
     {
-        public static string Generate(GlobalDefinition globalDef, string ns, DataFormat format)
+        public static string Generate(GlobalDefinition globalDef, string ns)
         {
             var sb = new StringBuilder();
             var className = $"GlobalConfig{globalDef.Name}";
@@ -51,15 +51,7 @@ namespace Azcel.Editor
             sb.AppendLine();
             sb.AppendLine("        private static object ParseValue(string type, string value)");
             sb.AppendLine("        {");
-            sb.AppendLine("            return type?.ToLower() switch");
-            sb.AppendLine("            {");
-            sb.AppendLine("                \"int\" => int.TryParse(value, out var i) ? i : 0,");
-            sb.AppendLine("                \"long\" => long.TryParse(value, out var l) ? l : 0L,");
-            sb.AppendLine("                \"float\" => float.TryParse(value, out var f) ? f : 0f,");
-            sb.AppendLine("                \"double\" => double.TryParse(value, out var d) ? d : 0d,");
-            sb.AppendLine("                \"bool\" => value == \"1\" || value?.ToLower() == \"true\",");
-            sb.AppendLine("                _ => value ?? \"\"");
-            sb.AppendLine("            };");
+            sb.AppendLine("            return AzcelBinary.ParseValue(type, value);");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");

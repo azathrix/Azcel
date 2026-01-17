@@ -27,8 +27,8 @@ namespace Azcel
         public string codeNamespace = "Game.Tables";
 
         [Header("数据格式")]
-        [Tooltip("数据输出格式")]
-        public DataFormat dataFormat = DataFormat.Binary;
+        [Tooltip("格式ID（可自定义，例如 binary/json/custom）")]
+        public string dataFormatId = ConfigFormatIds.Binary;
 
         [Tooltip("数组元素分隔符")]
         public string arraySeparator = "|";
@@ -37,12 +37,4 @@ namespace Azcel
         public string objectSeparator = ",";
     }
 
-    /// <summary>
-    /// 数据输出格式
-    /// </summary>
-    public enum DataFormat
-    {
-        Binary,
-        Json
-    }
 }

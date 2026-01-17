@@ -1,4 +1,5 @@
 using System.IO;
+using Azathrix.Framework.Core.Pipeline;
 using Azathrix.EnvInstaller.Editor.UI;
 using Azathrix.Framework.Tools;
 using Cysharp.Threading.Tasks;
@@ -13,7 +14,7 @@ namespace Azcel.Editor
     public class AzcelWindow : EditorWindow
     {
         private Vector2 _scrollPos;
-        private string[] _envIds = new[] { "ExcelDataReader.DataSet", "ExcelDataReader" };
+        private string[] _envIds = new[] {"ExcelDataReader.DataSet", "ExcelDataReader"};
 
         [MenuItem("Azathrix/Azcel/配置窗口")]
         public static void ShowWindow()
@@ -25,19 +26,32 @@ namespace Azcel.Editor
         [MenuItem("Azathrix/Azcel/转换配置 &`")]
         public static void ConvertConfig()
         {
+            ConvertConfig(true).Forget();
+        }
+
+        public static async UniTask ConvertConfig(bool autoRefresh)
+        {
             if (!CheckEnvironment(out var message))
             {
                 EditorUtility.DisplayDialog("Azcel", message, "确定");
                 return;
             }
 
-            RunConvert().Forget();
+            await RunConvert(autoRefresh);
         }
 
-        private static async UniTaskVoid RunConvert()
+        private static async UniTask RunConvert(bool autoRefresh)
         {
-            var converter = new ConfigConverter();
-            var context = new ConvertContext();
+            var converter = PipelineFactory.Get<ConfigConverter>();
+            if (converter == null)
+            {
+                EditorUtility.DisplayDialog("Azcel", "未找到 Azcel.Converter 管线，请检查注册表。", "确定");
+                return;
+            }
+            var context = new ConvertContext
+            {
+                SkipAssetRefresh = !autoRefresh
+            };
             await converter.ExecuteAsync(context);
         }
 
@@ -128,7 +142,26 @@ namespace Azcel.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("数据格式", EditorStyles.boldLabel);
 
-            settings.dataFormat = (DataFormat)EditorGUILayout.EnumPopup("输出格式", settings.dataFormat);
+            var formatIds = ConfigFormatRegistry.GetFormatIdArray();
+            if (formatIds.Length == 0)
+            {
+                EditorGUILayout.HelpBox("未发现可用格式，请确保实现 IConfigFormat 并可被扫描到。", MessageType.Warning);
+            }
+            else
+            {
+                var selectedIndex = 0;
+                for (int i = 0; i < formatIds.Length; i++)
+                {
+                    if (string.Equals(formatIds[i], settings.dataFormatId, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+
+                var newIndex = EditorGUILayout.Popup("格式选择", selectedIndex, formatIds);
+                settings.dataFormatId = formatIds[newIndex];
+            }
             settings.arraySeparator = EditorGUILayout.TextField("数组分隔符", settings.arraySeparator);
             settings.objectSeparator = EditorGUILayout.TextField("对象分隔符", settings.objectSeparator);
 
@@ -150,6 +183,7 @@ namespace Azcel.Editor
                     path = selected;
                 }
             }
+
             EditorGUILayout.EndHorizontal();
         }
 

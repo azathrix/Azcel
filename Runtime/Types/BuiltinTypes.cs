@@ -23,6 +23,8 @@ namespace Azcel
             TypeRegistry.Register("Vector2", new Vector2Parser());
             TypeRegistry.Register("Vector3", new Vector3Parser());
             TypeRegistry.Register("Vector4", new Vector4Parser());
+            TypeRegistry.Register("Vector2Int", new Vector2IntParser());
+            TypeRegistry.Register("Vector3Int", new Vector3IntParser());
             TypeRegistry.Register("Color", new ColorParser());
             TypeRegistry.Register("Rect", new RectParser());
         }
@@ -232,6 +234,59 @@ namespace Azcel
             => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y); {writerExpr}.Write({valueExpr}.z); {writerExpr}.Write({valueExpr}.w)";
     }
 
+    public class Vector2IntParser : ITypeParser
+    {
+        public string CSharpTypeName => "UnityEngine.Vector2Int";
+        public bool IsValueType => true;
+        public string DefaultValueExpression => "default";
+
+        public object Parse(string value, string separator)
+        {
+            if (string.IsNullOrEmpty(value)) return Vector2Int.zero;
+            var parts = value.Split(separator[0]);
+            return new Vector2Int(
+                parts.Length > 0 ? int.Parse(parts[0]) : 0,
+                parts.Length > 1 ? int.Parse(parts[1]) : 0
+            );
+        }
+
+        public string GenerateParseCode(string valueExpr, string separatorExpr)
+            => $"ParseVector2Int({valueExpr}, {separatorExpr})";
+
+        public string GenerateBinaryReadCode(string readerExpr)
+            => $"new UnityEngine.Vector2Int({readerExpr}.ReadInt32(), {readerExpr}.ReadInt32())";
+
+        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
+            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y)";
+    }
+
+    public class Vector3IntParser : ITypeParser
+    {
+        public string CSharpTypeName => "UnityEngine.Vector3Int";
+        public bool IsValueType => true;
+        public string DefaultValueExpression => "default";
+
+        public object Parse(string value, string separator)
+        {
+            if (string.IsNullOrEmpty(value)) return Vector3Int.zero;
+            var parts = value.Split(separator[0]);
+            return new Vector3Int(
+                parts.Length > 0 ? int.Parse(parts[0]) : 0,
+                parts.Length > 1 ? int.Parse(parts[1]) : 0,
+                parts.Length > 2 ? int.Parse(parts[2]) : 0
+            );
+        }
+
+        public string GenerateParseCode(string valueExpr, string separatorExpr)
+            => $"ParseVector3Int({valueExpr}, {separatorExpr})";
+
+        public string GenerateBinaryReadCode(string readerExpr)
+            => $"new UnityEngine.Vector3Int({readerExpr}.ReadInt32(), {readerExpr}.ReadInt32(), {readerExpr}.ReadInt32())";
+
+        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
+            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y); {writerExpr}.Write({valueExpr}.z)";
+    }
+
     public class ColorParser : ITypeParser
     {
         public string CSharpTypeName => "UnityEngine.Color";
@@ -318,13 +373,13 @@ namespace Azcel
         }
 
         public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseArray<{_elementParser.CSharpTypeName}>({valueExpr}, {separatorExpr})";
+            => $"AzcelBinary.ParseArray<{_elementParser.CSharpTypeName}>({valueExpr}, {separatorExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
-            => $"ReadArray<{_elementParser.CSharpTypeName}>({readerExpr})";
+            => $"AzcelBinary.ReadArray<{_elementParser.CSharpTypeName}>({readerExpr})";
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"WriteArray({writerExpr}, {valueExpr})";
+            => $"AzcelBinary.WriteArray({writerExpr}, {valueExpr})";
     }
 
     public class DictionaryTypeParser : ITypeParser
@@ -349,13 +404,13 @@ namespace Azcel
         }
 
         public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseDictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>({valueExpr}, {separatorExpr})";
+            => $"AzcelBinary.ParseDictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>({valueExpr}, {separatorExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
-            => $"ReadDictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>({readerExpr})";
+            => $"AzcelBinary.ReadDictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>({readerExpr})";
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"WriteDictionary({writerExpr}, {valueExpr})";
+            => $"AzcelBinary.WriteDictionary({writerExpr}, {valueExpr})";
     }
 
     public class TableRefTypeParser : ITypeParser
@@ -367,7 +422,7 @@ namespace Azcel
             _tableName = tableName;
         }
 
-        public string CSharpTypeName => $"{_tableName}Row";
+        public string CSharpTypeName => _tableName;
         public bool IsValueType => true;
         public string DefaultValueExpression => "default";
 
@@ -403,7 +458,7 @@ namespace Azcel
         public object Parse(string value, string separator)
         {
             // 枚举在运行时解析
-            return value;
+            return string.IsNullOrEmpty(value) ? 0 : int.Parse(value);
         }
 
         public string GenerateParseCode(string valueExpr, string separatorExpr)
