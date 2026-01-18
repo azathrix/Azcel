@@ -11,8 +11,6 @@ namespace Azcel.Editor
     {
         private readonly BinaryConfigDataSerializer _serializer = new();
 
-        public string FormatId => "binary";
-
         public void Serialize(ConvertContext context, string outputPath)
         {
             _serializer.Serialize(context, outputPath);

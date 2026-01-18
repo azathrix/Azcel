@@ -196,6 +196,11 @@ namespace Azcel
 
             _configs.Add(typed.Id, typed);
             _all.Add(typed);
+            if (_indexStores.Count > 0)
+            {
+                foreach (var store in _indexStores.Values)
+                    store.Add(typed);
+            }
             ClearCache();
         }
 
@@ -647,6 +652,7 @@ namespace Azcel
             string Name { get; }
             Type ValueType { get; }
             void Build(List<TConfig> items);
+            void Add(TConfig item);
             bool TryGet(object value, out IReadOnlyList<TConfig> list);
         }
 
@@ -681,6 +687,21 @@ namespace Azcel
                         _map[key] = list = new List<TConfig>();
                     list.Add(item);
                 }
+            }
+
+            public void Add(TConfig item)
+            {
+                var keyObj = _accessor.GetValue(item);
+                if (keyObj == null)
+                    return;
+
+                if (!TryConvertKey(keyObj, typeof(TValue), out var converted))
+                    return;
+
+                var key = (TValue)converted;
+                if (!_map.TryGetValue(key, out var list))
+                    _map[key] = list = new List<TConfig>();
+                list.Add(item);
             }
 
             public bool TryGet(object value, out IReadOnlyList<TConfig> list)
@@ -724,6 +745,17 @@ namespace Azcel
                         _map[keyObj] = list = new List<TConfig>();
                     list.Add(item);
                 }
+            }
+
+            public void Add(TConfig item)
+            {
+                var keyObj = _accessor.GetValue(item);
+                if (keyObj == null)
+                    return;
+
+                if (!_map.TryGetValue(keyObj, out var list))
+                    _map[keyObj] = list = new List<TConfig>();
+                list.Add(item);
             }
 
             public bool TryGet(object value, out IReadOnlyList<TConfig> list)

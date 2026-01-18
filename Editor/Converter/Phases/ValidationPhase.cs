@@ -111,7 +111,9 @@ namespace Azcel.Editor
             if (value == null)
                 return true;
 
-            if (!TryValidateByType(value.Type, value.Value, null, null, enumValueMap, out var reason))
+            var arraySep = global?.ArraySeparator;
+            var objectSep = global?.ObjectSeparator;
+            if (!TryValidateByType(value.Type, value.Value, arraySep, objectSep, enumValueMap, out var reason))
             {
                 var sourceInfo = string.IsNullOrEmpty(value.SourceExcelPath)
                     ? ""
@@ -148,30 +150,6 @@ namespace Azcel.Editor
                         return false;
                     }
                 }
-                return true;
-            }
-
-            if (TryParseMapType(type, out var keyType, out var valueType))
-            {
-                if (string.IsNullOrEmpty(value))
-                    return true;
-
-                var entries = value.Split(arraySep[0]);
-                for (int i = 0; i < entries.Length; i++)
-                {
-                    SplitKeyValue(entries[i], objectSep, out var key, out var val);
-                    if (!TryValidateByType(keyType, key, arraySep, objectSep, enumValueMap, out reason))
-                    {
-                        reason = $"字典键[{i}] 无法解析：{reason}";
-                        return false;
-                    }
-                    if (!TryValidateByType(valueType, val, arraySep, objectSep, enumValueMap, out reason))
-                    {
-                        reason = $"字典值[{i}] 无法解析：{reason}";
-                        return false;
-                    }
-                }
-
                 return true;
             }
 
@@ -301,38 +279,5 @@ namespace Azcel.Editor
             return true;
         }
 
-        private static bool TryParseMapType(string type, out string keyType, out string valueType)
-        {
-            keyType = null;
-            valueType = null;
-            if (string.IsNullOrEmpty(type))
-                return false;
-
-            if (!type.StartsWith("map<", StringComparison.OrdinalIgnoreCase) || !type.EndsWith(">", StringComparison.Ordinal))
-                return false;
-
-            var inner = type[4..^1];
-            var commaIndex = inner.IndexOf(',');
-            if (commaIndex <= 0)
-                return false;
-
-            keyType = inner[..commaIndex].Trim();
-            valueType = inner[(commaIndex + 1)..].Trim();
-            return true;
-        }
-
-        private static void SplitKeyValue(string value, string separator, out string key, out string val)
-        {
-            var idx = value.IndexOf(separator, StringComparison.Ordinal);
-            if (idx < 0)
-            {
-                key = value ?? "";
-                val = "";
-                return;
-            }
-
-            key = value[..idx];
-            val = value[(idx + separator.Length)..];
-        }
     }
 }

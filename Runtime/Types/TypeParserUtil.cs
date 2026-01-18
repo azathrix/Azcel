@@ -21,18 +21,5 @@ namespace Azcel
             return AzcelSettings.Instance?.objectSeparator ?? ",";
         }
 
-        public static void SplitKeyValue(string value, string separator, out string key, out string val)
-        {
-            var idx = value.IndexOf(separator, StringComparison.Ordinal);
-            if (idx < 0)
-            {
-                key = value ?? "";
-                val = "";
-                return;
-            }
-
-            key = value[..idx];
-            val = value[(idx + separator.Length)..];
-        }
     }
 }

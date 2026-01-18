@@ -22,9 +22,6 @@ namespace Azcel.TypeParsers
             );
         }
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector2({valueExpr}, {separatorExpr})";
-
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Vector2({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
 
@@ -60,9 +57,6 @@ namespace Azcel.TypeParsers
                 parts.Length > 2 ? float.Parse(parts[2], CultureInfo.InvariantCulture) : 0
             );
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector3({valueExpr}, {separatorExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Vector3({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
@@ -103,9 +97,6 @@ namespace Azcel.TypeParsers
             );
         }
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector4({valueExpr}, {separatorExpr})";
-
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Vector4({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
 
@@ -145,9 +136,6 @@ namespace Azcel.TypeParsers
             );
         }
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector2Int({valueExpr}, {separatorExpr})";
-
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Vector2Int({readerExpr}.ReadInt32(), {readerExpr}.ReadInt32())";
 
@@ -183,9 +171,6 @@ namespace Azcel.TypeParsers
                 parts.Length > 2 ? int.Parse(parts[2]) : 0
             );
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector3Int({valueExpr}, {separatorExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Vector3Int({readerExpr}.ReadInt32(), {readerExpr}.ReadInt32(), {readerExpr}.ReadInt32())";
@@ -225,9 +210,6 @@ namespace Azcel.TypeParsers
                 parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 1
             );
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseColor({valueExpr}, {separatorExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Color({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
@@ -269,9 +251,6 @@ namespace Azcel.TypeParsers
                 parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 0
             );
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseRect({valueExpr}, {separatorExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"new UnityEngine.Rect({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";

@@ -30,11 +30,6 @@ namespace Azcel
         object Parse(string value, string separator);
 
         /// <summary>
-        /// 生成解析代码
-        /// </summary>
-        string GenerateParseCode(string valueExpr, string separatorExpr);
-
-        /// <summary>
         /// 生成二进制读取代码
         /// </summary>
         string GenerateBinaryReadCode(string readerExpr);
@@ -85,22 +80,6 @@ namespace Azcel
                 var elementParser = Get(elementType);
                 if (elementParser != null)
                     return new ArrayTypeParser(elementParser);
-            }
-
-            // 处理字典类型 map<K,V>
-            if (typeName.StartsWith("map<") && typeName.EndsWith(">"))
-            {
-                var inner = typeName[4..^1];
-                var commaIndex = inner.IndexOf(',');
-                if (commaIndex > 0)
-                {
-                    var keyType = inner[..commaIndex].Trim();
-                    var valueType = inner[(commaIndex + 1)..].Trim();
-                    var keyParser = Get(keyType);
-                    var valueParser = Get(valueType);
-                    if (keyParser != null && valueParser != null)
-                        return new DictionaryTypeParser(keyParser, valueParser);
-                }
             }
 
             // 处理表引用 @TableName

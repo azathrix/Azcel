@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Reflection;
 
 namespace Azcel
 {
@@ -32,9 +33,6 @@ namespace Azcel
         public object Parse(string value, string separator)
             => string.IsNullOrEmpty(value) ? 0 : int.Parse(value);
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"int.Parse({valueExpr})";
-
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadInt32()";
 
@@ -56,9 +54,6 @@ namespace Azcel
         public object Parse(string value, string separator)
             => string.IsNullOrEmpty(value) ? 0L : long.Parse(value);
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"long.Parse({valueExpr})";
-
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadInt64()";
 
@@ -79,9 +74,6 @@ namespace Azcel
 
         public object Parse(string value, string separator)
             => string.IsNullOrEmpty(value) ? 0f : float.Parse(value, CultureInfo.InvariantCulture);
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"float.Parse({valueExpr}, System.Globalization.CultureInfo.InvariantCulture)";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadSingle()";
@@ -105,9 +97,6 @@ namespace Azcel
 
         public object Parse(string value, string separator)
             => string.IsNullOrEmpty(value) ? 0d : double.Parse(value, CultureInfo.InvariantCulture);
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"double.Parse({valueExpr}, System.Globalization.CultureInfo.InvariantCulture)";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadDouble()";
@@ -135,9 +124,6 @@ namespace Azcel
             return value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"({valueExpr} == \"1\" || {valueExpr}.Equals(\"true\", StringComparison.OrdinalIgnoreCase))";
-
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadBoolean()";
 
@@ -164,9 +150,6 @@ namespace Azcel
 
         public object Parse(string value, string separator)
             => value ?? "";
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => valueExpr;
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadString()";
@@ -199,18 +182,71 @@ namespace Azcel
 
         public object Parse(string value, string separator)
         {
+            var elementType = ResolveElementType(_elementParser.CSharpTypeName);
             if (string.IsNullOrEmpty(value))
-                return Array.CreateInstance(Type.GetType(_elementParser.CSharpTypeName) ?? typeof(object), 0);
+                return Array.CreateInstance(elementType, 0);
 
             var parts = value.Split(separator[0]);
-            var array = Array.CreateInstance(Type.GetType(_elementParser.CSharpTypeName) ?? typeof(object), parts.Length);
+            var array = Array.CreateInstance(elementType, parts.Length);
             for (int i = 0; i < parts.Length; i++)
                 array.SetValue(_elementParser.Parse(parts[i], separator), i);
             return array;
         }
 
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"AzcelBinary.ParseArray<{_elementParser.CSharpTypeName}>({valueExpr}, {separatorExpr})";
+        private static Type ResolveElementType(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName))
+                return typeof(object);
+
+            switch (typeName)
+            {
+                case "int": return typeof(int);
+                case "long": return typeof(long);
+                case "float": return typeof(float);
+                case "double": return typeof(double);
+                case "bool": return typeof(bool);
+                case "string": return typeof(string);
+            }
+
+            var direct = Type.GetType(typeName);
+            if (direct != null)
+                return direct;
+
+            var needNameMatch = !typeName.Contains(".");
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < assemblies.Length; i++)
+            {
+                var assembly = assemblies[i];
+                var type = assembly.GetType(typeName);
+                if (type != null)
+                    return type;
+
+                if (!needNameMatch)
+                    continue;
+
+                Type[] types;
+                try
+                {
+                    types = assembly.GetTypes();
+                }
+                catch (ReflectionTypeLoadException e)
+                {
+                    types = e.Types;
+                }
+
+                if (types == null)
+                    continue;
+
+                for (int t = 0; t < types.Length; t++)
+                {
+                    var candidate = types[t];
+                    if (candidate != null && string.Equals(candidate.Name, typeName, StringComparison.Ordinal))
+                        return candidate;
+                }
+            }
+
+            return typeof(object);
+        }
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"AzcelBinary.ReadArray<{_elementParser.CSharpTypeName}>({readerExpr})";
@@ -236,64 +272,6 @@ namespace Azcel
         }
     }
 
-    public class DictionaryTypeParser : ITypeParser
-    {
-        private readonly ITypeParser _keyParser;
-        private readonly ITypeParser _valueParser;
-
-        public DictionaryTypeParser(ITypeParser keyParser, ITypeParser valueParser)
-        {
-            _keyParser = keyParser;
-            _valueParser = valueParser;
-        }
-
-        public string CSharpTypeName => $"System.Collections.Generic.Dictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>";
-        public bool IsValueType => false;
-        public string DefaultValueExpression => $"new System.Collections.Generic.Dictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>()";
-
-        public object Parse(string value, string separator)
-        {
-            // 简化实现，实际需要更复杂的解析
-            return new System.Collections.Generic.Dictionary<object, object>();
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"AzcelBinary.ParseDictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"AzcelBinary.ReadDictionary<{_keyParser.CSharpTypeName}, {_valueParser.CSharpTypeName}>({readerExpr})";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"AzcelBinary.WriteDictionary({writerExpr}, {valueExpr})";
-
-        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
-        {
-            arraySep = TypeParserUtil.NormalizeArraySeparator(arraySep);
-            objectSep = TypeParserUtil.NormalizeObjectSeparator(objectSep);
-
-            if (string.IsNullOrEmpty(value))
-            {
-                writer.BeginArray(0);
-                writer.EndArray();
-                return;
-            }
-
-            var entries = value.Split(arraySep[0]);
-            writer.BeginArray(entries.Length);
-            for (int i = 0; i < entries.Length; i++)
-            {
-                TypeParserUtil.SplitKeyValue(entries[i], objectSep, out var key, out var val);
-                writer.BeginObject();
-                writer.WritePropertyName("k");
-                _keyParser.Serialize(writer, key, arraySep, objectSep);
-                writer.WritePropertyName("v");
-                _valueParser.Serialize(writer, val, arraySep, objectSep);
-                writer.EndObject();
-            }
-            writer.EndArray();
-        }
-    }
-
     public class TableRefTypeParser : ITypeParser
     {
         private readonly string _tableName;
@@ -312,9 +290,6 @@ namespace Azcel
             // 表引用在运行时解析
             return string.IsNullOrEmpty(value) ? 0 : int.Parse(value);
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"int.Parse({valueExpr})"; // 存储ID
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"{readerExpr}.ReadInt32()"; // 读取ID
@@ -346,9 +321,6 @@ namespace Azcel
             // 枚举在运行时解析
             return string.IsNullOrEmpty(value) ? 0 : int.Parse(value);
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"Enum.Parse<{_enumName}>({valueExpr})";
 
         public string GenerateBinaryReadCode(string readerExpr)
             => $"({_enumName}){readerExpr}.ReadInt32()";

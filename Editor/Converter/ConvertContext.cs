@@ -10,6 +10,7 @@ namespace Azcel.Editor
     /// </summary>
     public class ConvertContext : PipelineContext
     {
+        private IDictionary<string, string> _paramScope;
         public sealed class PerfRecord
         {
             public string Phase { get; }
@@ -137,6 +138,64 @@ namespace Azcel.Editor
             var full = Path.GetFullPath(excelPath);
             return TempExcelPathMap.TryGetValue(full, out var original) ? original : excelPath;
         }
+
+        public IDisposable PushParamScope(IDictionary<string, string> localParams)
+        {
+            var previous = _paramScope;
+            _paramScope = localParams;
+            return new ParamScope(this, previous);
+        }
+
+        public string GetParam(string key, string fallback = null)
+        {
+            return GetParam(_paramScope, key, fallback);
+        }
+
+        public string GetParam(IDictionary<string, string> localParams, string key, string fallback = null)
+        {
+            var normalized = NormalizeParamKey(key);
+            if (!string.IsNullOrEmpty(normalized) && localParams != null &&
+                localParams.TryGetValue(normalized, out var localValue) &&
+                !string.IsNullOrEmpty(localValue))
+            {
+                return localValue;
+            }
+
+            var settings = AzcelSettings.Instance;
+            if (settings != null && !string.IsNullOrEmpty(normalized) &&
+                settings.TryGetGlobalParam(normalized, out var globalValue) &&
+                !string.IsNullOrEmpty(globalValue))
+            {
+                return globalValue;
+            }
+
+            return fallback;
+        }
+
+        public static string NormalizeParamKey(string key)
+        {
+            return string.IsNullOrEmpty(key) ? string.Empty : key.Trim().ToLowerInvariant();
+        }
+
+        private sealed class ParamScope : IDisposable
+        {
+            private ConvertContext _context;
+            private readonly IDictionary<string, string> _previous;
+
+            public ParamScope(ConvertContext context, IDictionary<string, string> previous)
+            {
+                _context = context;
+                _previous = previous;
+            }
+
+            public void Dispose()
+            {
+                if (_context == null)
+                    return;
+                _context._paramScope = _previous;
+                _context = null;
+            }
+        }
     }
 
     /// <summary>
@@ -148,6 +207,7 @@ namespace Azcel.Editor
         public string ExcelPath { get; set; }
         public List<FieldDefinition> Fields { get; } = new();
         public List<RowData> Rows { get; } = new();
+        public Dictionary<string, string> Params { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         // 配置
         public string KeyField { get; set; } = "Id";
@@ -222,6 +282,9 @@ namespace Azcel.Editor
     {
         public string Name { get; set; }
         public string ExcelPath { get; set; }
+        public string ArraySeparator { get; set; } = "|";
+        public string ObjectSeparator { get; set; } = ",";
+        public Dictionary<string, string> Params { get; } = new(StringComparer.OrdinalIgnoreCase);
         public List<GlobalValueDefinition> Values { get; } = new();
     }
 

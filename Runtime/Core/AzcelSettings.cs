@@ -38,6 +38,10 @@ namespace Azcel
         [Tooltip("对象字段分隔符")]
         public string objectSeparator = ",";
 
+        [Header("全局参数")]
+        [Tooltip("全局参数（按 key:value 方式提供给表/全局配置回退）")]
+        public List<ParamEntry> globalParams = new();
+
         [Header("解析默认值")]
         [Tooltip("默认主键字段名（可被表内 key: 覆盖）")]
         public string defaultKeyField = "Id";
@@ -50,6 +54,33 @@ namespace Azcel
 
         [Tooltip("默认类型行（可被表内 typerow: 覆盖）")]
         public int defaultTypeRow = 3;
+
+        public bool TryGetGlobalParam(string key, out string value)
+        {
+            value = null;
+            if (string.IsNullOrEmpty(key))
+                return false;
+
+            for (int i = 0; i < globalParams.Count; i++)
+            {
+                var entry = globalParams[i];
+                if (entry == null || string.IsNullOrEmpty(entry.key))
+                    continue;
+                if (!string.Equals(entry.key, key, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                value = entry.value;
+                return true;
+            }
+
+            return false;
+        }
+
+        [Serializable]
+        public class ParamEntry
+        {
+            public string key;
+            public string value;
+        }
 
     }
 

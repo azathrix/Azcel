@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Text;
+using UnityEngine;
 
 namespace Azcel.Editor
 {
@@ -34,7 +35,7 @@ namespace Azcel.Editor
                 {
                     var tableName = value.Type.Substring(1);
                     var idField = $"{value.Key}Id";
-                    sb.AppendLine($"        public static readonly int {idField} = {BuildValueExpression(value.Type, value.Value)};");
+                    sb.AppendLine($"        public static readonly int {idField} = {BuildValueExpression(globalDef, value)};");
                     sb.AppendLine($"        private static {tableName} _{value.Key}Cache;");
                     sb.AppendLine($"        private static bool _{value.Key}CacheReady;");
                     AppendComment(sb, value.Comment, 8);
@@ -56,7 +57,7 @@ namespace Azcel.Editor
                 }
 
                 var typeName = GetCSharpType(value.Type);
-                var valueExpr = BuildValueExpression(value.Type, value.Value);
+                var valueExpr = BuildValueExpression(globalDef, value);
                 AppendComment(sb, value.Comment, 8);
                 sb.AppendLine($"        public static readonly {typeName} {value.Key} = {valueExpr};");
             }
@@ -104,48 +105,31 @@ namespace Azcel.Editor
                 .Replace(">", "&gt;");
         }
 
-        private static string BuildValueExpression(string type, string value)
+        private static string BuildValueExpression(GlobalDefinition globalDef, GlobalValueDefinition valueDef)
         {
-            if (IsTableRef(type))
-            {
-                if (TryBuildLiteralExpression("int", value, out var idExpr))
-                    return idExpr;
-            }
-
-            if (TryBuildLiteralExpression(type, value, out var literalExpr))
-                return literalExpr;
-
-            var parser = TypeRegistry.Get(type);
-            if (parser == null)
+            var type = valueDef?.Type;
+            var value = valueDef?.Value;
+            if (string.IsNullOrEmpty(type))
                 return ToStringLiteral(value);
 
-            if (string.IsNullOrEmpty(value))
-                return parser.DefaultValueExpression;
+            var arraySep = globalDef?.ArraySeparator;
+            var objectSep = globalDef?.ObjectSeparator;
+            if (string.IsNullOrEmpty(arraySep))
+                arraySep = AzcelSettings.Instance?.arraySeparator ?? "|";
+            if (string.IsNullOrEmpty(objectSep))
+                objectSep = AzcelSettings.Instance?.objectSeparator ?? ",";
 
-            var valueExpr = ToStringLiteral(value);
-            var sepExpr = "AzcelSettings.Instance?.arraySeparator ?? \"|\"";
+            if (TryBuildLiteralExpression(type, value, arraySep, objectSep, out var literalExpr))
+                return literalExpr;
 
-            if (IsEnumRef(type))
-            {
-                var enumName = type.Substring(1);
-                return $"({enumName})AzcelBinary.ParseValue(\"{Escape(type)}\", {valueExpr})";
-            }
-
-            if (IsArrayOrMap(type))
-                return parser.GenerateParseCode(valueExpr, sepExpr);
-
-            var csharpType = parser.CSharpTypeName ?? "object";
-            return $"({csharpType})AzcelBinary.ParseValue(\"{Escape(type)}\", {valueExpr})";
+            throw new InvalidOperationException(BuildGlobalLiteralError(globalDef, valueDef));
         }
 
-        private static bool TryBuildLiteralExpression(string type, string rawValue, out string expr)
+        private static bool TryBuildLiteralExpression(string type, string rawValue, string arraySep, string objectSep, out string expr)
         {
             expr = null;
             if (string.IsNullOrEmpty(type))
                 return false;
-
-            var arraySep = AzcelSettings.Instance?.arraySeparator ?? "|";
-            var objectSep = AzcelSettings.Instance?.objectSeparator ?? ",";
 
             if (IsEnumRef(type))
             {
@@ -166,6 +150,20 @@ namespace Azcel.Editor
                 return true;
             }
 
+            if (IsTableRef(type))
+            {
+                if (string.IsNullOrEmpty(rawValue))
+                {
+                    expr = "0";
+                    return true;
+                }
+
+                if (!int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var idValue))
+                    idValue = 0;
+                expr = idValue.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
             if (IsArrayType(type, out var elementType))
             {
                 var elementCSharpType = GetCSharpType(elementType);
@@ -180,43 +178,11 @@ namespace Azcel.Editor
                 sb.Append("new ").Append(elementCSharpType).Append("[] { ");
                 for (int i = 0; i < parts.Length; i++)
                 {
-                    if (!TryBuildLiteralExpression(elementType, parts[i], out var elementExpr))
+                    if (!TryBuildLiteralExpression(elementType, parts[i], arraySep, objectSep, out var elementExpr))
                         return false;
                     if (i > 0)
                         sb.Append(", ");
                     sb.Append(elementExpr);
-                }
-                sb.Append(" }");
-                expr = sb.ToString();
-                return true;
-            }
-
-            if (IsMapType(type, out var keyType, out var valueType))
-            {
-                var keyCSharp = GetCSharpType(keyType);
-                var valueCSharp = GetCSharpType(valueType);
-                if (string.IsNullOrEmpty(rawValue))
-                {
-                    expr = $"new System.Collections.Generic.Dictionary<{keyCSharp}, {valueCSharp}>()";
-                    return true;
-                }
-
-                var entries = Split(rawValue, arraySep);
-                var sb = new StringBuilder();
-                sb.Append("new System.Collections.Generic.Dictionary<")
-                    .Append(keyCSharp).Append(", ").Append(valueCSharp).Append(">")
-                    .Append(" { ");
-
-                for (int i = 0; i < entries.Length; i++)
-                {
-                    SplitKeyValue(entries[i], objectSep, out var keyRaw, out var valueRaw);
-                    if (!TryBuildLiteralExpression(keyType, keyRaw, out var keyExpr))
-                        return false;
-                    if (!TryBuildLiteralExpression(valueType, valueRaw, out var valueExpr))
-                        return false;
-                    if (i > 0)
-                        sb.Append(", ");
-                    sb.Append("{ ").Append(keyExpr).Append(", ").Append(valueExpr).Append(" }");
                 }
                 sb.Append(" }");
                 expr = sb.ToString();
@@ -355,24 +321,6 @@ namespace Azcel.Editor
             return true;
         }
 
-        private static bool IsMapType(string type, out string keyType, out string valueType)
-        {
-            keyType = null;
-            valueType = null;
-            if (string.IsNullOrEmpty(type))
-                return false;
-            if (!type.StartsWith("map<", StringComparison.OrdinalIgnoreCase) || !type.EndsWith(">", StringComparison.Ordinal))
-                return false;
-
-            var inner = type[4..^1];
-            var commaIndex = inner.IndexOf(',');
-            if (commaIndex <= 0)
-                return false;
-            keyType = inner[..commaIndex].Trim();
-            valueType = inner[(commaIndex + 1)..].Trim();
-            return true;
-        }
-
         private static string NormalizeTypeName(string type)
         {
             if (string.IsNullOrEmpty(type))
@@ -384,6 +332,36 @@ namespace Azcel.Editor
             return trimmed.ToLowerInvariant();
         }
 
+        private static string BuildGlobalLiteralError(GlobalDefinition globalDef, GlobalValueDefinition valueDef)
+        {
+            var name = globalDef?.Name ?? "UnknownGlobal";
+            var key = valueDef?.Key ?? "";
+            var type = valueDef?.Type ?? "";
+            var value = valueDef?.Value ?? "";
+
+            var info = "";
+            if (valueDef != null)
+            {
+                var parts = new StringBuilder();
+                if (!string.IsNullOrEmpty(valueDef.SourceExcelPath))
+                    parts.Append($"Excel: {valueDef.SourceExcelPath}");
+                if (!string.IsNullOrEmpty(valueDef.SourceSheetName))
+                {
+                    if (parts.Length > 0) parts.Append(", ");
+                    parts.Append($"Sheet: {valueDef.SourceSheetName}");
+                }
+                if (valueDef.RowIndex > 0)
+                {
+                    if (parts.Length > 0) parts.Append(", ");
+                    parts.Append($"行: {valueDef.RowIndex}");
+                }
+                if (parts.Length > 0)
+                    info = $" ({parts})";
+            }
+
+            return $"[Azcel] 全局配置无法生成静态字面量: {name}.{key} 类型 {type} 值 \"{value}\"{info}";
+        }
+
         private static string[] Split(string value, string separator)
         {
             if (string.IsNullOrEmpty(value))
@@ -391,34 +369,6 @@ namespace Azcel.Editor
             if (string.IsNullOrEmpty(separator))
                 return new[] { value };
             return value.Split(new[] { separator }, StringSplitOptions.None);
-        }
-
-        private static void SplitKeyValue(string value, string separator, out string key, out string val)
-        {
-            if (string.IsNullOrEmpty(value))
-            {
-                key = string.Empty;
-                val = string.Empty;
-                return;
-            }
-
-            if (string.IsNullOrEmpty(separator))
-            {
-                key = value;
-                val = string.Empty;
-                return;
-            }
-
-            var idx = value.IndexOf(separator, StringComparison.Ordinal);
-            if (idx < 0)
-            {
-                key = value;
-                val = string.Empty;
-                return;
-            }
-
-            key = value.Substring(0, idx);
-            val = value.Substring(idx + separator.Length);
         }
 
         private static int ParseInt(string[] parts, int index)
@@ -446,17 +396,6 @@ namespace Azcel.Editor
             return !string.IsNullOrEmpty(type) && type.StartsWith("@", StringComparison.Ordinal);
         }
 
-        private static bool IsArrayOrMap(string type)
-        {
-            if (string.IsNullOrEmpty(type))
-                return false;
-
-            if (type.EndsWith("[]", StringComparison.Ordinal))
-                return true;
-
-            return type.StartsWith("map<", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static string ToStringLiteral(string value)
         {
             if (value == null)
@@ -466,9 +405,6 @@ namespace Azcel.Editor
             return $"\"{escaped}\"";
         }
 
-        private static string Escape(string value)
-        {
-            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
-        }
+        
     }
 }

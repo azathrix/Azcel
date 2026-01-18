@@ -116,19 +116,6 @@ namespace Azcel.Editor
                 return string.Join(arraySep, parts);
             }
 
-            if (TryParseMapType(type, out var keyType, out var valueType))
-            {
-                var entries = value.Split(arraySep[0]);
-                for (int i = 0; i < entries.Length; i++)
-                {
-                    SplitKeyValue(entries[i], objectSep, out var key, out var val);
-                    key = NormalizeEnumValue(keyType, key, arraySep, objectSep, enumValueMap);
-                    val = NormalizeEnumValue(valueType, val, arraySep, objectSep, enumValueMap);
-                    entries[i] = $"{key}{objectSep}{val}";
-                }
-                return string.Join(arraySep, entries);
-            }
-
             if (type.StartsWith("#", StringComparison.Ordinal))
             {
                 if (int.TryParse(value, out _))
@@ -142,38 +129,5 @@ namespace Azcel.Editor
             return value ?? "";
         }
 
-        private static bool TryParseMapType(string type, out string keyType, out string valueType)
-        {
-            keyType = null;
-            valueType = null;
-            if (string.IsNullOrEmpty(type))
-                return false;
-
-            if (!type.StartsWith("map<", StringComparison.OrdinalIgnoreCase) || !type.EndsWith(">", StringComparison.Ordinal))
-                return false;
-
-            var inner = type[4..^1];
-            var commaIndex = inner.IndexOf(',');
-            if (commaIndex <= 0)
-                return false;
-
-            keyType = inner[..commaIndex].Trim();
-            valueType = inner[(commaIndex + 1)..].Trim();
-            return true;
-        }
-
-        private static void SplitKeyValue(string value, string separator, out string key, out string val)
-        {
-            var idx = value.IndexOf(separator, StringComparison.Ordinal);
-            if (idx < 0)
-            {
-                key = value ?? "";
-                val = "";
-                return;
-            }
-
-            key = value[..idx];
-            val = value[(idx + separator.Length)..];
-        }
     }
 }

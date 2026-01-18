@@ -311,51 +311,55 @@ namespace Azcel.Editor
             {
                 Name = tableName,
                 ExcelPath = sourcePath,
-                KeyField = string.IsNullOrWhiteSpace(settings.defaultKeyField) ? DefaultKeyField : settings.defaultKeyField,
-                KeyType = string.IsNullOrWhiteSpace(settings.defaultKeyType) ? DefaultKeyType : settings.defaultKeyType,
-                ArraySeparator = settings.arraySeparator,
-                ObjectSeparator = settings.objectSeparator,
-                FieldRow = settings.defaultFieldRow > 0 ? settings.defaultFieldRow : DefaultFieldRow,
-                TypeRow = settings.defaultTypeRow > 0 ? settings.defaultTypeRow : DefaultTypeRow,
             };
 
             // 解析配置行参数
             var configRow = sheet.Rows[0];
-            for (int col = 1; col < configRow.ItemArray.Length; col++)
+            var configParams = ParseConfigRowParams(configRow);
+            foreach (var kv in configParams)
+                table.Params[kv.Key] = kv.Value;
+
+            var defaultKeyField = string.IsNullOrWhiteSpace(settings.defaultKeyField) ? DefaultKeyField : settings.defaultKeyField;
+            var defaultKeyType = string.IsNullOrWhiteSpace(settings.defaultKeyType) ? DefaultKeyType : settings.defaultKeyType;
+            var defaultFieldRow = settings.defaultFieldRow > 0 ? settings.defaultFieldRow : DefaultFieldRow;
+            var defaultTypeRow = settings.defaultTypeRow > 0 ? settings.defaultTypeRow : DefaultTypeRow;
+
+            using (context.PushParamScope(table.Params))
             {
-                var param = configRow[col]?.ToString()?.Trim();
-                if (string.IsNullOrEmpty(param))
-                    continue;
+                table.KeyField = context.GetParam("key", defaultKeyField);
+                table.KeyType = context.GetParam("keytype", defaultKeyType);
+                table.ParentTable = context.GetParam("extends", table.ParentTable);
+                table.ArraySeparator = context.GetParam("arrayseparator", settings.arraySeparator);
+                table.ObjectSeparator = context.GetParam("objectseparator", settings.objectSeparator);
 
-                var parts = param.Split(':');
-                if (parts.Length != 2)
-                    continue;
+                var fieldKeymapRaw = context.GetParam("field_keymap", null);
+                if (string.IsNullOrEmpty(fieldKeymapRaw))
+                    fieldKeymapRaw = context.GetParam("fieldkeymap", null);
+                if (!string.IsNullOrEmpty(fieldKeymapRaw))
+                    table.FieldKeymap = ParseBooleanFlag(fieldKeymapRaw);
 
-                var key = parts[0].Trim().ToLower();
-                var value = parts[1].Trim();
-
-                switch (key)
+                var indexRaw = context.GetParam("index", null);
+                if (!string.IsNullOrEmpty(indexRaw))
                 {
-                    case "key": table.KeyField = value; break;
-                    case "keytype": table.KeyType = value; break;
-                    case "extends": table.ParentTable = value; break;
-                    case "arrayseparator": table.ArraySeparator = value; break;
-                    case "objectseparator": table.ObjectSeparator = value; break;
-                    case "field_keymap":
-                    case "fieldkeymap":
-                        table.FieldKeymap = ParseBooleanFlag(value);
-                        break;
-                    case "index":
-                        foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                        {
-                            var trimmed = item.Trim();
-                            if (!string.IsNullOrEmpty(trimmed))
-                                table.IndexFields.Add(trimmed);
-                        }
-                        break;
-                    case "fieldrow": table.FieldRow = int.Parse(value); break;
-                    case "typerow": table.TypeRow = int.Parse(value); break;
+                    foreach (var item in indexRaw.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var trimmed = item.Trim();
+                        if (!string.IsNullOrEmpty(trimmed))
+                            table.IndexFields.Add(trimmed);
+                    }
                 }
+
+                var fieldRowRaw = context.GetParam("fieldrow", null);
+                if (int.TryParse(fieldRowRaw, out var fieldRowValue))
+                    table.FieldRow = fieldRowValue;
+                else
+                    table.FieldRow = defaultFieldRow;
+
+                var typeRowRaw = context.GetParam("typerow", null);
+                if (int.TryParse(typeRowRaw, out var typeRowValue))
+                    table.TypeRow = typeRowValue;
+                else
+                    table.TypeRow = defaultTypeRow;
             }
 
             if (!IsKnownType(table.KeyType))
@@ -529,8 +533,19 @@ namespace Azcel.Editor
             var globalDef = new GlobalDefinition
             {
                 Name = globalName,
-                ExcelPath = sourcePath
+                ExcelPath = sourcePath,
+                ArraySeparator = settings.arraySeparator,
+                ObjectSeparator = settings.objectSeparator
             };
+
+            var configParams = ParseConfigRowParams(sheet.Rows[0]);
+            foreach (var kv in configParams)
+                globalDef.Params[kv.Key] = kv.Value;
+            using (context.PushParamScope(globalDef.Params))
+            {
+                globalDef.ArraySeparator = context.GetParam("arrayseparator", settings.arraySeparator);
+                globalDef.ObjectSeparator = context.GetParam("objectseparator", settings.objectSeparator);
+            }
 
             if (!TryResolveGlobalColumns(sheet, out var headerRowIndex, out var keyCol, out var valueCol, out var typeCol, out var commentCol))
             {
@@ -584,6 +599,33 @@ namespace Azcel.Editor
             }
 
             return globalDef;
+        }
+
+        private static Dictionary<string, string> ParseConfigRowParams(DataRow configRow)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (configRow == null)
+                return result;
+
+            for (int col = 1; col < configRow.ItemArray.Length; col++)
+            {
+                var param = configRow[col]?.ToString()?.Trim();
+                if (string.IsNullOrEmpty(param))
+                    continue;
+
+                var parts = param.Split(new[] { ':' }, 2);
+                if (parts.Length != 2)
+                    continue;
+
+                var key = ConvertContext.NormalizeParamKey(parts[0]);
+                if (string.IsNullOrEmpty(key))
+                    continue;
+
+                var value = parts[1].Trim();
+                result[key] = value;
+            }
+
+            return result;
         }
 
         private static bool TryResolveGlobalColumns(DataTable sheet, out int headerRowIndex, out int keyCol, out int valueCol,
@@ -788,30 +830,7 @@ namespace Azcel.Editor
             if (type.EndsWith("[]", StringComparison.Ordinal))
                 return IsKnownType(type[..^2]);
 
-            if (TryParseMapType(type, out var keyType, out var valueType))
-                return IsKnownType(keyType) && IsKnownType(valueType);
-
             return TypeRegistry.IsRegistered(type);
-        }
-
-        private static bool TryParseMapType(string type, out string keyType, out string valueType)
-        {
-            keyType = null;
-            valueType = null;
-            if (string.IsNullOrEmpty(type))
-                return false;
-
-            if (!type.StartsWith("map<", StringComparison.OrdinalIgnoreCase) || !type.EndsWith(">", StringComparison.Ordinal))
-                return false;
-
-            var inner = type[4..^1];
-            var commaIndex = inner.IndexOf(',');
-            if (commaIndex <= 0)
-                return false;
-
-            keyType = inner[..commaIndex].Trim();
-            valueType = inner[(commaIndex + 1)..].Trim();
-            return true;
         }
 
         private static int NormalizeRowIndex(DataTable sheet, int rowIndex)
