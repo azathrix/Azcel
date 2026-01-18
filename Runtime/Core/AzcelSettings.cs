@@ -12,6 +12,8 @@ namespace Azcel
     [ShowSetting("Azcel配置")]
     public class AzcelSettings : SettingsBase<AzcelSettings>
     {
+        public const string DefaultFormatId = "binary";
+
         [Header("路径配置")]
         [Tooltip("Excel文件目录列表")]
         public List<string> excelPaths = new() { "Assets/Excel" };
@@ -28,7 +30,7 @@ namespace Azcel
 
         [Header("数据格式")]
         [Tooltip("格式ID（可自定义，例如 binary/json/custom）")]
-        public string dataFormatId = ConfigFormatIds.Binary;
+        public string dataFormatId = DefaultFormatId;
 
         [Tooltip("数组元素分隔符")]
         public string arraySeparator = "|";

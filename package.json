@@ -10,5 +10,12 @@
     "dependencies": {
         "com.azathrix.framework": "1.0.0",
         "com.azathrix.unitask": "2.5.10"
-    }
+    },
+    "samples": [
+        {
+            "displayName": "Azcel 编辑器 API 测试示例",
+            "description": "编辑器下的 Azcel 基础 API 调用测试（不依赖配置转换）",
+            "path": "Test~"
+        }
+    ]
 }

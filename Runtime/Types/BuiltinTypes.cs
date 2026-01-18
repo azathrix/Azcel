@@ -1,6 +1,5 @@
 using System;
 using System.Globalization;
-using UnityEngine;
 
 namespace Azcel
 {
@@ -19,14 +18,6 @@ namespace Azcel
             TypeRegistry.Register("bool", new BoolParser());
             TypeRegistry.Register("string", new StringParser());
 
-            // Unity类型
-            TypeRegistry.Register("Vector2", new Vector2Parser());
-            TypeRegistry.Register("Vector3", new Vector3Parser());
-            TypeRegistry.Register("Vector4", new Vector4Parser());
-            TypeRegistry.Register("Vector2Int", new Vector2IntParser());
-            TypeRegistry.Register("Vector3Int", new Vector3IntParser());
-            TypeRegistry.Register("Color", new ColorParser());
-            TypeRegistry.Register("Rect", new RectParser());
         }
     }
 
@@ -49,6 +40,11 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            writer.WriteInt(string.IsNullOrEmpty(value) ? 0 : int.Parse(value));
+        }
     }
 
     public class LongParser : ITypeParser
@@ -68,6 +64,11 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            writer.WriteLong(string.IsNullOrEmpty(value) ? 0L : long.Parse(value));
+        }
     }
 
     public class FloatParser : ITypeParser
@@ -87,6 +88,13 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            writer.WriteFloat(string.IsNullOrEmpty(value)
+                ? 0f
+                : float.Parse(value, CultureInfo.InvariantCulture));
+        }
     }
 
     public class DoubleParser : ITypeParser
@@ -106,6 +114,13 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            writer.WriteDouble(string.IsNullOrEmpty(value)
+                ? 0d
+                : double.Parse(value, CultureInfo.InvariantCulture));
+        }
     }
 
     public class BoolParser : ITypeParser
@@ -128,6 +143,17 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                writer.WriteBool(false);
+                return;
+            }
+
+            writer.WriteBool(value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase));
+        }
     }
 
     public class StringParser : ITypeParser
@@ -147,200 +173,11 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr} ?? \"\")";
-    }
 
-    #endregion
-
-    #region Unity类型解析器
-
-    public class Vector2Parser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Vector2";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
         {
-            if (string.IsNullOrEmpty(value)) return Vector2.zero;
-            var parts = value.Split(separator[0]);
-            return new Vector2(
-                parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0
-            );
+            writer.WriteString(value ?? "");
         }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector2({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Vector2({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y)";
-    }
-
-    public class Vector3Parser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Vector3";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
-        {
-            if (string.IsNullOrEmpty(value)) return Vector3.zero;
-            var parts = value.Split(separator[0]);
-            return new Vector3(
-                parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 2 ? float.Parse(parts[2], CultureInfo.InvariantCulture) : 0
-            );
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector3({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Vector3({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y); {writerExpr}.Write({valueExpr}.z)";
-    }
-
-    public class Vector4Parser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Vector4";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
-        {
-            if (string.IsNullOrEmpty(value)) return Vector4.zero;
-            var parts = value.Split(separator[0]);
-            return new Vector4(
-                parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 2 ? float.Parse(parts[2], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 0
-            );
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector4({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Vector4({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y); {writerExpr}.Write({valueExpr}.z); {writerExpr}.Write({valueExpr}.w)";
-    }
-
-    public class Vector2IntParser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Vector2Int";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
-        {
-            if (string.IsNullOrEmpty(value)) return Vector2Int.zero;
-            var parts = value.Split(separator[0]);
-            return new Vector2Int(
-                parts.Length > 0 ? int.Parse(parts[0]) : 0,
-                parts.Length > 1 ? int.Parse(parts[1]) : 0
-            );
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector2Int({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Vector2Int({readerExpr}.ReadInt32(), {readerExpr}.ReadInt32())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y)";
-    }
-
-    public class Vector3IntParser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Vector3Int";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
-        {
-            if (string.IsNullOrEmpty(value)) return Vector3Int.zero;
-            var parts = value.Split(separator[0]);
-            return new Vector3Int(
-                parts.Length > 0 ? int.Parse(parts[0]) : 0,
-                parts.Length > 1 ? int.Parse(parts[1]) : 0,
-                parts.Length > 2 ? int.Parse(parts[2]) : 0
-            );
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseVector3Int({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Vector3Int({readerExpr}.ReadInt32(), {readerExpr}.ReadInt32(), {readerExpr}.ReadInt32())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y); {writerExpr}.Write({valueExpr}.z)";
-    }
-
-    public class ColorParser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Color";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
-        {
-            if (string.IsNullOrEmpty(value)) return Color.white;
-            var parts = value.Split(separator[0]);
-            return new Color(
-                parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 1,
-                parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 1,
-                parts.Length > 2 ? float.Parse(parts[2], CultureInfo.InvariantCulture) : 1,
-                parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 1
-            );
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseColor({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Color({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.r); {writerExpr}.Write({valueExpr}.g); {writerExpr}.Write({valueExpr}.b); {writerExpr}.Write({valueExpr}.a)";
-    }
-
-    public class RectParser : ITypeParser
-    {
-        public string CSharpTypeName => "UnityEngine.Rect";
-        public bool IsValueType => true;
-        public string DefaultValueExpression => "default";
-
-        public object Parse(string value, string separator)
-        {
-            if (string.IsNullOrEmpty(value)) return Rect.zero;
-            var parts = value.Split(separator[0]);
-            return new Rect(
-                parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 2 ? float.Parse(parts[2], CultureInfo.InvariantCulture) : 0,
-                parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 0
-            );
-        }
-
-        public string GenerateParseCode(string valueExpr, string separatorExpr)
-            => $"ParseRect({valueExpr}, {separatorExpr})";
-
-        public string GenerateBinaryReadCode(string readerExpr)
-            => $"new UnityEngine.Rect({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
-
-        public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr}.x); {writerExpr}.Write({valueExpr}.y); {writerExpr}.Write({valueExpr}.width); {writerExpr}.Write({valueExpr}.height)";
     }
 
     #endregion
@@ -380,6 +217,23 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"AzcelBinary.WriteArray({writerExpr}, {valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            arraySep = TypeParserUtil.NormalizeArraySeparator(arraySep);
+            if (string.IsNullOrEmpty(value))
+            {
+                writer.BeginArray(0);
+                writer.EndArray();
+                return;
+            }
+
+            var parts = value.Split(arraySep[0]);
+            writer.BeginArray(parts.Length);
+            for (int i = 0; i < parts.Length; i++)
+                _elementParser.Serialize(writer, parts[i], arraySep, objectSep);
+            writer.EndArray();
+        }
     }
 
     public class DictionaryTypeParser : ITypeParser
@@ -411,6 +265,33 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"AzcelBinary.WriteDictionary({writerExpr}, {valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            arraySep = TypeParserUtil.NormalizeArraySeparator(arraySep);
+            objectSep = TypeParserUtil.NormalizeObjectSeparator(objectSep);
+
+            if (string.IsNullOrEmpty(value))
+            {
+                writer.BeginArray(0);
+                writer.EndArray();
+                return;
+            }
+
+            var entries = value.Split(arraySep[0]);
+            writer.BeginArray(entries.Length);
+            for (int i = 0; i < entries.Length; i++)
+            {
+                TypeParserUtil.SplitKeyValue(entries[i], objectSep, out var key, out var val);
+                writer.BeginObject();
+                writer.WritePropertyName("k");
+                _keyParser.Serialize(writer, key, arraySep, objectSep);
+                writer.WritePropertyName("v");
+                _valueParser.Serialize(writer, val, arraySep, objectSep);
+                writer.EndObject();
+            }
+            writer.EndArray();
+        }
     }
 
     public class TableRefTypeParser : ITypeParser
@@ -440,6 +321,11 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write({valueExpr})"; // 写入ID
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            writer.WriteInt(string.IsNullOrEmpty(value) ? 0 : int.Parse(value));
+        }
     }
 
     public class EnumRefTypeParser : ITypeParser
@@ -469,7 +355,13 @@ namespace Azcel
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
             => $"{writerExpr}.Write((int){valueExpr})";
+
+        public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+        {
+            writer.WriteInt(string.IsNullOrEmpty(value) ? 0 : int.Parse(value));
+        }
     }
 
     #endregion
+
 }

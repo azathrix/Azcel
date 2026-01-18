@@ -468,17 +468,33 @@ namespace Azcel.Editor
                 ExcelPath = filePath
             };
 
-            for (int row = DefaultDataRow - 1; row < sheet.Rows.Count; row++)
+            if (!TryResolveGlobalColumns(sheet, out var headerRowIndex, out var keyCol, out var valueCol, out var typeCol, out var commentCol))
+            {
+                context.AddError($"[ExcelParse] 全局 {globalName} 未找到列定义行（需要 key/value/type/comment）(Excel: {filePath})");
+                return globalDef;
+            }
+
+            for (int row = headerRowIndex + 1; row < sheet.Rows.Count; row++)
             {
                 var dataRow = sheet.Rows[row];
                 if (IsMarkerRow(dataRow, out _))
                     continue;
-                var key = dataRow[0]?.ToString()?.Trim();
+                if (keyCol < 0 || keyCol >= dataRow.ItemArray.Length)
+                    continue;
+
+                var key = dataRow[keyCol]?.ToString()?.Trim();
                 if (string.IsNullOrEmpty(key))
                     continue;
 
-                var value = dataRow.ItemArray.Length > 1 ? dataRow[1]?.ToString() : "";
-                var type = dataRow.ItemArray.Length > 2 ? dataRow[2]?.ToString()?.Trim() : "";
+                var value = valueCol >= 0 && valueCol < dataRow.ItemArray.Length
+                    ? dataRow[valueCol]?.ToString()
+                    : "";
+                var type = typeCol >= 0 && typeCol < dataRow.ItemArray.Length
+                    ? dataRow[typeCol]?.ToString()?.Trim()
+                    : "";
+                var comment = commentCol >= 0 && commentCol < dataRow.ItemArray.Length
+                    ? dataRow[commentCol]?.ToString()?.Trim()
+                    : "";
                 if (string.IsNullOrEmpty(type))
                 {
                     context.AddError(
@@ -495,11 +511,83 @@ namespace Azcel.Editor
                 {
                     Key = key,
                     Value = value ?? "",
-                    Type = type ?? "string"
+                    Type = type ?? "string",
+                    Comment = comment ?? ""
                 });
             }
 
             return globalDef;
+        }
+
+        private static bool TryResolveGlobalColumns(DataTable sheet, out int headerRowIndex, out int keyCol, out int valueCol,
+            out int typeCol, out int commentCol)
+        {
+            headerRowIndex = -1;
+            keyCol = -1;
+            valueCol = -1;
+            typeCol = -1;
+            commentCol = -1;
+
+            if (sheet == null)
+                return false;
+
+            for (int row = 0; row < sheet.Rows.Count; row++)
+            {
+                var dataRow = sheet.Rows[row];
+                if (IsMarkerRow(dataRow, out _))
+                    continue;
+
+                var hit = false;
+                for (int col = 0; col < dataRow.ItemArray.Length; col++)
+                {
+                    var token = NormalizeGlobalHeaderToken(dataRow[col]?.ToString());
+                    if (string.IsNullOrEmpty(token))
+                        continue;
+
+                    hit = true;
+                    switch (token)
+                    {
+                        case "key":
+                            if (keyCol < 0) keyCol = col;
+                            break;
+                        case "value":
+                            if (valueCol < 0) valueCol = col;
+                            break;
+                        case "type":
+                            if (typeCol < 0) typeCol = col;
+                            break;
+                        case "comment":
+                            if (commentCol < 0) commentCol = col;
+                            break;
+                    }
+                }
+
+                if (hit && keyCol >= 0 && valueCol >= 0)
+                {
+                    headerRowIndex = row;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string NormalizeGlobalHeaderToken(string raw)
+        {
+            if (string.IsNullOrEmpty(raw))
+                return null;
+
+            var token = raw.Trim().ToLowerInvariant();
+            if (token == "key" || token == "键" || token == "键名")
+                return "key";
+            if (token == "value" || token == "值")
+                return "value";
+            if (token == "type" || token == "类型")
+                return "type";
+            if (token == "comment" || token == "注释" || token == "备注" || token == "说明" || token == "desc")
+                return "comment";
+
+            return null;
         }
 
         private static void MergeFieldOptions(TableDefinition target, TableDefinition source)

@@ -40,17 +40,25 @@ namespace Azcel.Editor
                 return UniTask.CompletedTask;
             }
 
-            var exporter = ConfigDataExporterRegistry.Get(formatId);
-            if (exporter == null)
+            var plugin = ConfigFormatPluginRegistry.Get(formatId);
+            if (plugin == null)
             {
-                context.AddError($"[DataExport] 未找到格式 {formatId} 的导出器，无法导出数据");
+                context.AddError($"[DataExport] 未找到格式 {formatId} 的编辑器插件，无法导出数据");
                 return UniTask.CompletedTask;
             }
-            exporter.Export(context, outputPath);
 
-            var manifest = AzcelManifestBuilder.Build(context, settings.codeNamespace, formatId);
-            var manifestBytes = AzcelManifest.Serialize(manifest);
-            File.WriteAllBytes(Path.Combine(outputPath, $"{AzcelManifest.ManifestName}.bytes"), manifestBytes);
+            try
+            {
+                plugin.Serialize(context, outputPath);
+            }
+            catch (System.Exception e)
+            {
+                context.AddError($"[DataExport] 序列化失败: {e.Message}");
+                return UniTask.CompletedTask;
+            }
+
+            if (context.Errors.Count > 0)
+                return UniTask.CompletedTask;
 
             return UniTask.CompletedTask;
         }

@@ -1,60 +1,27 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
-using System.IO;
+using Azathrix.Framework.Core.Pipeline;
 using Azathrix.Framework.Tools;
+using Cysharp.Threading.Tasks;
 
 namespace Azcel.Editor
 {
-    public interface IConfigDataExporter
+    /// <summary>
+    /// 数据校验阶段（类型/枚举/引用值合法性）
+    /// </summary>
+    [Register]
+    [PhaseId("Validate")]
+    public class ValidationPhase : IConvertPhase
     {
-        void Export(ConvertContext context, string outputPath);
-    }
+        public int Order => 350;
 
-    public static class ConfigDataExporterRegistry
-    {
-        private static readonly Dictionary<string, IConfigDataExporter> Exporters = new(StringComparer.OrdinalIgnoreCase);
-
-        static ConfigDataExporterRegistry()
-        {
-            Register(ConfigFormatIds.Binary, new BinaryConfigDataExporter());
-        }
-
-        public static IConfigDataExporter Current { get; set; } = new BinaryConfigDataExporter();
-
-        public static void Register(string formatId, IConfigDataExporter exporter)
-        {
-            if (string.IsNullOrEmpty(formatId) || exporter == null)
-                return;
-
-            Exporters[formatId] = exporter;
-        }
-
-        public static IConfigDataExporter Get(string formatId)
-        {
-            if (string.IsNullOrEmpty(formatId))
-                return null;
-
-            return Exporters.TryGetValue(formatId, out var exporter) ? exporter : null;
-        }
-    }
-
-    public sealed class BinaryConfigDataExporter : IConfigDataExporter
-    {
-        public void Export(ConvertContext context, string outputPath)
+        public UniTask ExecuteAsync(ConvertContext context)
         {
             var enumValueMap = BuildEnumValueMap(context);
-            var totalWatch = Stopwatch.StartNew();
 
             foreach (var table in context.Tables)
             {
-                var watch = Stopwatch.StartNew();
-                var filePath = Path.Combine(outputPath, $"{table.Name}.bytes");
-                using var stream = File.Create(filePath);
-                using var writer = new BinaryWriter(stream);
-
-                writer.Write(table.Rows.Count);
                 foreach (var row in table.Rows)
                 {
                     foreach (var field in table.Fields)
@@ -64,70 +31,22 @@ namespace Azcel.Editor
 
                         var value = row.Values.TryGetValue(field.Name, out var v) ? v : "";
                         if (!TryValidateValue(table, field, row, value, enumValueMap, out var error))
-                        {
                             context.AddError(error);
-                            return;
-                        }
-                        WriteValue(writer, field.Type, value, table.ArraySeparator, table.ObjectSeparator, enumValueMap);
                     }
                 }
-
-                writer.Flush();
-                stream.Flush();
-                watch.Stop();
-                context.SetDataSize(table.Name, stream.Length);
-                context.AddPerfRecord("DataExport", "Table", table.Name, table.Rows.Count, watch.ElapsedMilliseconds);
             }
 
             foreach (var global in context.Globals)
             {
-                var watch = Stopwatch.StartNew();
-                var filePath = Path.Combine(outputPath, $"GlobalConfig{global.Name}.bytes");
-                using var stream = File.Create(filePath);
-                using var writer = new BinaryWriter(stream);
-
-                writer.Write(global.Values.Count);
                 foreach (var value in global.Values)
                 {
                     if (!TryValidateGlobalValue(global, value, enumValueMap, out var error))
-                    {
                         context.AddError(error);
-                        return;
-                    }
-                    writer.Write(value.Key);
-                    writer.Write(value.Type);
-                    writer.Write(value.Value);
-                }
-
-                writer.Flush();
-                stream.Flush();
-                watch.Stop();
-                var globalConfigName = $"GlobalConfig{global.Name}";
-                context.SetDataSize(globalConfigName, stream.Length);
-                context.AddPerfRecord("DataExport", "Global", $"GlobalConfig{global.Name}", global.Values.Count,
-                    watch.ElapsedMilliseconds);
-            }
-
-            totalWatch.Stop();
-            context.SetPhaseTotal("DataExport", totalWatch.ElapsedMilliseconds);
-        }
-
-        private static void WriteValue(BinaryWriter writer, string type, string value, string arraySep, string objectSep,
-            Dictionary<string, Dictionary<string, int>> enumValueMap)
-        {
-            if (!string.IsNullOrEmpty(type) && type.StartsWith("#", StringComparison.Ordinal))
-            {
-                var enumName = type[1..];
-                if (!int.TryParse(value, out var enumValue))
-                {
-                    if (enumValueMap.TryGetValue(enumName, out var map) && map.TryGetValue(value ?? "", out var mapped))
-                        value = mapped.ToString();
-                    else
-                        value = "0";
                 }
             }
 
-            AzcelBinary.WriteValue(writer, type, value, arraySep, objectSep);
+            Log.Info("[Validate] 数据校验完成");
+            return UniTask.CompletedTask;
         }
 
         private static bool IsSkipped(FieldDefinition field)
@@ -169,7 +88,7 @@ namespace Azcel.Editor
             if (!TryValidateByType(field.Type, value, table.ArraySeparator, table.ObjectSeparator, enumValueMap, out var reason))
             {
                 var rowInfo = row?.RowIndex > 0 ? $" 第{row.RowIndex}行" : "";
-                error = $"[DataExport] 表 {table.Name}{rowInfo} 字段 {field.Name} 类型 {field.Type} 值 \"{value}\" 无法解析：{reason}";
+                error = $"[Validate] 表 {table.Name}{rowInfo} 字段 {field.Name} 类型 {field.Type} 值 \"{value}\" 无法解析：{reason}";
                 return false;
             }
 
@@ -185,7 +104,7 @@ namespace Azcel.Editor
 
             if (!TryValidateByType(value.Type, value.Value, null, null, enumValueMap, out var reason))
             {
-                error = $"[DataExport] 全局 {global.Name} 键 {value.Key} 类型 {value.Type} 值 \"{value.Value}\" 无法解析：{reason}";
+                error = $"[Validate] 全局 {global.Name} 键 {value.Key} 类型 {value.Type} 值 \"{value.Value}\" 无法解析：{reason}";
                 return false;
             }
 

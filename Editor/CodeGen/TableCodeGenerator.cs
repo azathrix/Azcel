@@ -132,7 +132,41 @@ namespace Azcel.Editor
 
             sb.AppendLine("        }");
 
-            if (table.FieldKeymap)
+            if (!table.FieldKeymap)
+            {
+                sb.AppendLine();
+                sb.AppendLine("        protected override bool TryGetValueInternal<T>(string fieldName, out T value)");
+                sb.AppendLine("        {");
+                sb.AppendLine("            value = default;");
+                sb.AppendLine("            if (string.IsNullOrEmpty(fieldName))");
+                sb.AppendLine("                return false;");
+                sb.AppendLine();
+
+                foreach (var field in table.Fields)
+                {
+                    if (IsSkipped(field))
+                        continue;
+
+                    var isKeyField = keyField != null && field.Name == keyFieldName;
+                    string valueExpr;
+                    if (field.IsTableRef)
+                        valueExpr = $"{field.Name}Id";
+                    else if (isKeyField && keyIsId)
+                        valueExpr = "Id";
+                    else
+                        valueExpr = field.Name;
+
+                    sb.AppendLine($"            if (string.Equals(fieldName, \"{field.Name}\", StringComparison.OrdinalIgnoreCase))");
+                    sb.AppendLine("            {");
+                    sb.AppendLine($"                return TryConvertValue({valueExpr}, out value);");
+                    sb.AppendLine("            }");
+                }
+
+                sb.AppendLine();
+                sb.AppendLine("            return false;");
+                sb.AppendLine("        }");
+            }
+            else
             {
                 sb.AppendLine();
                 sb.AppendLine("        protected override bool TryGetValueInternal<T>(string fieldName, out T value)");
@@ -181,6 +215,46 @@ namespace Azcel.Editor
             sb.AppendLine();
             sb.AppendLine($"    public sealed class {table.Name}Table : ConfigTable<{table.Name}, {keyType}>");
             sb.AppendLine("    {");
+            if (table.IndexFields.Count > 0)
+            {
+                sb.AppendLine("        protected override List<IndexAccessor> CreateIndexAccessors()");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var list = new List<IndexAccessor>({table.IndexFields.Count});");
+                foreach (var field in table.Fields)
+                {
+                    if (IsSkipped(field))
+                        continue;
+
+                    if (!table.IndexFields.Contains(field.Name))
+                        continue;
+
+                    var isKeyField = keyField != null && field.Name == keyFieldName;
+                    var accessorName = field.Name;
+                    string valueTypeExpr;
+                    string getterExpr;
+
+                    if (field.IsTableRef)
+                    {
+                        valueTypeExpr = "typeof(int)";
+                        getterExpr = $"config => config.{field.Name}Id";
+                    }
+                    else if (isKeyField && keyIsId)
+                    {
+                        valueTypeExpr = $"typeof({keyType})";
+                        getterExpr = "config => config.Id";
+                    }
+                    else
+                    {
+                        var csharpType = GetCSharpType(field, ns);
+                        valueTypeExpr = $"typeof({csharpType})";
+                        getterExpr = $"config => config.{field.Name}";
+                    }
+
+                    sb.AppendLine($"            list.Add(new IndexAccessor(\"{accessorName}\", {valueTypeExpr}, {getterExpr}));");
+                }
+                sb.AppendLine("            return list;");
+                sb.AppendLine("        }");
+            }
             sb.AppendLine("    }");
         }
 

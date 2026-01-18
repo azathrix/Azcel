@@ -1,0 +1,21 @@
+{
+    "name": "Azcel.Tests.Editor",
+    "rootNamespace": "Azcel.Tests",
+    "references": [
+        "Azcel",
+        "Azathrix.Framework.Runtime",
+        "Azathrix.Framework.Editor",
+        "UniTask"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -142,10 +142,10 @@ namespace Azcel.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("数据格式", EditorStyles.boldLabel);
 
-            var formatIds = ConfigFormatRegistry.GetFormatIdArray();
+            var formatIds = ConfigFormatPluginRegistry.GetFormatIdArray();
             if (formatIds.Length == 0)
             {
-                EditorGUILayout.HelpBox("未发现可用格式，请确保实现 IConfigFormat 并可被扫描到。", MessageType.Warning);
+                EditorGUILayout.HelpBox("未发现可用格式，请确保实现 IConfigFormatPlugin 并可被扫描到。", MessageType.Warning);
             }
             else
             {

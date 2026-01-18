@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Azcel
 {
@@ -42,6 +43,11 @@ namespace Azcel
         /// 生成二进制写入代码
         /// </summary>
         string GenerateBinaryWriteCode(string writerExpr, string valueExpr);
+
+        /// <summary>
+        /// 将字符串值序列化为基础写入操作
+        /// </summary>
+        void Serialize(IValueWriter writer, string value, string arraySep, string objectSep);
     }
 
     /// <summary>
@@ -50,6 +56,7 @@ namespace Azcel
     public static class TypeRegistry
     {
         private static readonly Dictionary<string, ITypeParser> _parsers = new(StringComparer.OrdinalIgnoreCase);
+        private static bool _scanned;
 
         static TypeRegistry()
         {
@@ -70,6 +77,7 @@ namespace Azcel
         /// </summary>
         public static ITypeParser Get(string typeName)
         {
+            EnsureScanned();
             // 处理数组类型
             if (typeName.EndsWith("[]"))
             {
@@ -110,6 +118,83 @@ namespace Azcel
             }
 
             return _parsers.TryGetValue(typeName, out var parser) ? parser : null;
+        }
+
+        private static void EnsureScanned()
+        {
+            if (_scanned)
+                return;
+
+            _scanned = true;
+
+#if UNITY_EDITOR
+            foreach (var type in UnityEditor.TypeCache.GetTypesWithAttribute<TypeParserPluginAttribute>())
+            {
+                if (type == null || type.IsAbstract || type.IsInterface)
+                    continue;
+                if (!typeof(ITypeParser).IsAssignableFrom(type))
+                    continue;
+                if (type.GetConstructor(Type.EmptyTypes) == null)
+                    continue;
+
+                try
+                {
+                    var attr = (TypeParserPluginAttribute)Attribute.GetCustomAttribute(type, typeof(TypeParserPluginAttribute));
+                    var instance = Activator.CreateInstance(type) as ITypeParser;
+                    var typeName = attr?.TypeName;
+                    if (string.IsNullOrEmpty(typeName))
+                        continue;
+                    Register(typeName, instance);
+                }
+                catch
+                {
+                    // 忽略无法实例化的插件
+                }
+            }
+#else
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            foreach (var asm in assemblies)
+            {
+                Type[] types;
+                try
+                {
+                    types = asm.GetTypes();
+                }
+                catch (ReflectionTypeLoadException e)
+                {
+                    types = e.Types;
+                }
+
+                if (types == null)
+                    continue;
+
+                foreach (var type in types)
+                {
+                    if (type == null || type.IsAbstract || type.IsInterface)
+                        continue;
+                    if (!typeof(ITypeParser).IsAssignableFrom(type))
+                        continue;
+                    if (!Attribute.IsDefined(type, typeof(TypeParserPluginAttribute)))
+                        continue;
+                    if (type.GetConstructor(Type.EmptyTypes) == null)
+                        continue;
+
+                    try
+                    {
+                        var attr = (TypeParserPluginAttribute)Attribute.GetCustomAttribute(type, typeof(TypeParserPluginAttribute));
+                        var instance = Activator.CreateInstance(type) as ITypeParser;
+                        var typeName = attr?.TypeName;
+                        if (string.IsNullOrEmpty(typeName))
+                            continue;
+                        Register(typeName, instance);
+                    }
+                    catch
+                    {
+                        // 忽略无法实例化的插件
+                    }
+                }
+            }
+#endif
         }
 
         /// <summary>

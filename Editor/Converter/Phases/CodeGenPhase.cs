@@ -1,6 +1,3 @@
-using System.Diagnostics;
-using System.IO;
-using System.Text;
 using Azathrix.Framework.Core.Pipeline;
 using Azathrix.Framework.Tools;
 using Cysharp.Threading.Tasks;
@@ -24,52 +21,30 @@ namespace Azcel.Editor
                 return UniTask.CompletedTask;
             }
 
-            var totalWatch = Stopwatch.StartNew();
             var settings = AzcelSettings.Instance;
             var outputPath = string.IsNullOrEmpty(context.TempCodeOutputPath)
                 ? settings.codeOutputPath
                 : context.TempCodeOutputPath;
 
-            // 确保输出目录存在
-            if (!Directory.Exists(outputPath))
-                Directory.CreateDirectory(outputPath);
+            var formatId = string.IsNullOrEmpty(settings.dataFormatId)
+                ? string.Empty
+                : settings.dataFormatId.Trim();
 
-            // 生成枚举
-            foreach (var enumDef in context.Enums)
+            var plugin = ConfigFormatPluginRegistry.Get(formatId);
+            if (plugin == null)
             {
-                var watch = Stopwatch.StartNew();
-                var code = EnumCodeGenerator.Generate(enumDef, settings.codeNamespace);
-                var filePath = Path.Combine(outputPath, $"{enumDef.Name}.cs");
-                File.WriteAllText(filePath, code, Encoding.UTF8);
-                watch.Stop();
-                context.AddPerfRecord("CodeGen", "Enum", enumDef.Name, enumDef.Values.Count, watch.ElapsedMilliseconds);
+                Log.Warning($"[CodeGen] 未找到格式 {formatId} 的编辑器插件，跳过代码生成");
+                return UniTask.CompletedTask;
             }
 
-            // 生成全局配置
-            foreach (var globalDef in context.Globals)
+            try
             {
-                var watch = Stopwatch.StartNew();
-                var code = GlobalCodeGenerator.Generate(globalDef, settings.codeNamespace);
-                var filePath = Path.Combine(outputPath, $"GlobalConfig{globalDef.Name}.cs");
-                File.WriteAllText(filePath, code, Encoding.UTF8);
-                watch.Stop();
-                context.AddPerfRecord("CodeGen", "Global", $"GlobalConfig{globalDef.Name}", globalDef.Values.Count,
-                    watch.ElapsedMilliseconds);
+                plugin.Generate(context, outputPath, settings.codeNamespace);
             }
-
-            // 生成配置
-            foreach (var table in context.Tables)
+            catch (System.Exception e)
             {
-                var watch = Stopwatch.StartNew();
-                var code = TableCodeGenerator.Generate(table, settings.codeNamespace);
-                var filePath = Path.Combine(outputPath, $"{table.Name}.cs");
-                File.WriteAllText(filePath, code, Encoding.UTF8);
-                watch.Stop();
-                context.AddPerfRecord("CodeGen", "Table", table.Name, table.Rows.Count, watch.ElapsedMilliseconds);
+                context.AddError($"[CodeGen] 生成失败: {e.Message}");
             }
-
-            totalWatch.Stop();
-            context.SetPhaseTotal("CodeGen", totalWatch.ElapsedMilliseconds);
             return UniTask.CompletedTask;
         }
     }

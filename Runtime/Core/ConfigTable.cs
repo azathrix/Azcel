@@ -7,8 +7,10 @@ using Azathrix.Framework.Tools;
 namespace Azcel
 {
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    /// <summary>索引标记（用于 ByIndex 查询）</summary>
     public sealed class ConfigIndexAttribute : Attribute
     {
+        /// <summary>索引名（为空则使用成员名）</summary>
         public string Name { get; }
         public ConfigIndexAttribute(string name = null)
         {
@@ -75,6 +77,7 @@ namespace Azcel
 
     public interface IConfigTableLoader
     {
+        /// <summary>加载表数据</summary>
         void Load(IConfigTable table, byte[] data);
     }
 
@@ -82,6 +85,7 @@ namespace Azcel
     {
         public static readonly BinaryConfigTableLoader Instance = new();
 
+        /// <summary>加载二进制表数据</summary>
         public void Load(IConfigTable table, byte[] data)
         {
             table.Clear();
@@ -128,7 +132,7 @@ namespace Azcel
         {
             var sample = new TConfig();
             _configName = sample.ConfigName;
-            _indexAccessors = BuildIndexAccessors();
+            _indexAccessors = CreateIndexAccessors();
         }
 
         /// <summary>配置类型</summary>
@@ -413,7 +417,12 @@ namespace Azcel
             }
         }
 
-        private static List<IndexAccessor> BuildIndexAccessors()
+        protected virtual List<IndexAccessor> CreateIndexAccessors()
+        {
+            return BuildIndexAccessorsByReflection();
+        }
+
+        private static List<IndexAccessor> BuildIndexAccessorsByReflection()
         {
             var result = new List<IndexAccessor>();
             var members = typeof(TConfig).GetMembers(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -598,21 +607,33 @@ namespace Azcel
             }
         }
 
-        private readonly struct IndexAccessor
+        protected readonly struct IndexAccessor
         {
             public string Name { get; }
             public Type ValueType { get; }
             private readonly MemberInfo _member;
+            private readonly Func<TConfig, object> _getter;
 
             public IndexAccessor(string name, MemberInfo member, Type valueType)
             {
                 Name = name;
                 _member = member;
                 ValueType = valueType;
+                _getter = null;
+            }
+
+            public IndexAccessor(string name, Type valueType, Func<TConfig, object> getter)
+            {
+                Name = name;
+                ValueType = valueType;
+                _getter = getter;
+                _member = null;
             }
 
             public object GetValue(TConfig config)
             {
+                if (_getter != null)
+                    return _getter(config);
                 if (_member is FieldInfo field)
                     return field.GetValue(config);
                 if (_member is PropertyInfo prop)
