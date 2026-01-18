@@ -37,6 +37,20 @@ namespace Azcel
 
         [Tooltip("对象字段分隔符")]
         public string objectSeparator = ",";
+
+        [Header("解析默认值")]
+        [Tooltip("默认主键字段名（可被表内 key: 覆盖）")]
+        public string defaultKeyField = "Id";
+
+        [Tooltip("默认主键类型（可被表内 keytype: 覆盖）")]
+        public string defaultKeyType = "int";
+
+        [Tooltip("默认字段行（可被表内 fieldrow: 覆盖）")]
+        public int defaultFieldRow = 2;
+
+        [Tooltip("默认类型行（可被表内 typerow: 覆盖）")]
+        public int defaultTypeRow = 3;
+
     }
 
 }

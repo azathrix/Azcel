@@ -165,6 +165,14 @@ namespace Azcel.Editor
             settings.arraySeparator = EditorGUILayout.TextField("数组分隔符", settings.arraySeparator);
             settings.objectSeparator = EditorGUILayout.TextField("对象分隔符", settings.objectSeparator);
 
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("解析默认值", EditorStyles.boldLabel);
+
+            settings.defaultKeyField = EditorGUILayout.TextField("默认主键字段", settings.defaultKeyField);
+            settings.defaultKeyType = EditorGUILayout.TextField("默认主键类型", settings.defaultKeyType);
+            settings.defaultFieldRow = EditorGUILayout.IntField("默认字段行", settings.defaultFieldRow);
+            settings.defaultTypeRow = EditorGUILayout.IntField("默认类型行", settings.defaultTypeRow);
+
             if (EditorGUI.EndChangeCheck())
                 EditorUtility.SetDirty(settings);
         }

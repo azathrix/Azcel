@@ -58,8 +58,7 @@ namespace Azcel.Editor
                 if (field.IsTableRef)
                 {
                     var idFieldName = $"{field.Name}Id";
-                    if (!string.IsNullOrEmpty(field.Comment))
-                        sb.AppendLine($"        /// <summary>{field.Comment}</summary>");
+                    AppendComment(sb, field.Comment, 8);
                     if (table.IndexFields.Contains(field.Name))
                         sb.AppendLine("        [ConfigIndex]");
                     sb.AppendLine($"        private {field.RefTableName} _{field.Name}Cache;");
@@ -84,8 +83,7 @@ namespace Azcel.Editor
                     var csharpType = GetCSharpType(field, ns);
                     if (!isKeyField || !keyIsId)
                     {
-                        if (!string.IsNullOrEmpty(field.Comment))
-                            sb.AppendLine($"        /// <summary>{field.Comment}</summary>");
+                        AppendComment(sb, field.Comment, 8);
                         if (table.IndexFields.Contains(field.Name))
                             sb.AppendLine("        [ConfigIndex]");
                         sb.AppendLine($"        public {csharpType} {field.Name} {{ get; private set; }}");
@@ -256,6 +254,31 @@ namespace Azcel.Editor
                 sb.AppendLine("        }");
             }
             sb.AppendLine("    }");
+        }
+
+        private static void AppendComment(StringBuilder sb, string comment, int indent)
+        {
+            if (string.IsNullOrEmpty(comment))
+                return;
+
+            var pad = new string(' ', indent);
+            sb.AppendLine($"{pad}/// <summary>");
+            var lines = comment.Replace("\r", "").Split('\n');
+            foreach (var line in lines)
+            {
+                var text = EscapeXml(line);
+                sb.AppendLine($"{pad}/// {text}");
+            }
+            sb.AppendLine($"{pad}/// </summary>");
+        }
+
+        private static string EscapeXml(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            return value.Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;");
         }
 
         private static string GetCSharpType(FieldDefinition field, string ns)

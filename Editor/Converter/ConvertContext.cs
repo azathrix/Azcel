@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Azathrix.Framework.Core.Pipeline;
 
 namespace Azcel.Editor
@@ -51,6 +52,11 @@ namespace Azcel.Editor
         /// 性能记录
         /// </summary>
         public List<PerfRecord> PerfRecords { get; } = new();
+
+        /// <summary>
+        /// 临时Excel路径映射（临时 -> 原始）
+        /// </summary>
+        public Dictionary<string, string> TempExcelPathMap { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 阶段总耗时
@@ -122,6 +128,15 @@ namespace Azcel.Editor
                 return;
             DataSizes[configName] = Math.Max(0, bytes);
         }
+
+        public string ResolveOriginalExcelPath(string excelPath)
+        {
+            if (string.IsNullOrEmpty(excelPath))
+                return excelPath;
+
+            var full = Path.GetFullPath(excelPath);
+            return TempExcelPathMap.TryGetValue(full, out var original) ? original : excelPath;
+        }
     }
 
     /// <summary>
@@ -146,8 +161,6 @@ namespace Azcel.Editor
         // 行配置
         public int FieldRow { get; set; } = 2;
         public int TypeRow { get; set; } = 3;
-        public int CommentRow { get; set; } = 4;
-        public int DataRow { get; set; } = 5;
     }
 
     /// <summary>
@@ -165,6 +178,10 @@ namespace Azcel.Editor
         public string RefTableName { get; set; }
         public bool IsEnumRef { get; set; }
         public string RefEnumName { get; set; }
+        public string SourceExcelPath { get; set; }
+        public string SourceSheetName { get; set; }
+        public int SourceRowIndex { get; set; }
+        public int SourceColumnIndex { get; set; }
     }
 
     /// <summary>
@@ -173,6 +190,8 @@ namespace Azcel.Editor
     public class RowData
     {
         public int RowIndex { get; set; }
+        public string SourceExcelPath { get; set; }
+        public string SourceSheetName { get; set; }
         public Dictionary<string, string> Values { get; } = new();
     }
 
@@ -215,5 +234,8 @@ namespace Azcel.Editor
         public string Value { get; set; }
         public string Type { get; set; }
         public string Comment { get; set; }
+        public int RowIndex { get; set; }
+        public string SourceExcelPath { get; set; }
+        public string SourceSheetName { get; set; }
     }
 }

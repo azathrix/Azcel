@@ -88,7 +88,16 @@ namespace Azcel.Editor
             if (!TryValidateByType(field.Type, value, table.ArraySeparator, table.ObjectSeparator, enumValueMap, out var reason))
             {
                 var rowInfo = row?.RowIndex > 0 ? $" 第{row.RowIndex}行" : "";
-                error = $"[Validate] 表 {table.Name}{rowInfo} 字段 {field.Name} 类型 {field.Type} 值 \"{value}\" 无法解析：{reason}";
+                var sourcePath = row?.SourceExcelPath ?? table.ExcelPath;
+                var sourceSheet = row?.SourceSheetName;
+                var sourceInfo = string.IsNullOrEmpty(sourcePath) ? "" : $" (Excel: {sourcePath}";
+                if (!string.IsNullOrEmpty(sourceInfo))
+                {
+                    if (!string.IsNullOrEmpty(sourceSheet))
+                        sourceInfo += $", Sheet: {sourceSheet}";
+                    sourceInfo += ")";
+                }
+                error = $"[Validate] 表 {table.Name}{rowInfo} 字段 {field.Name} 类型 {field.Type} 值 \"{value}\" 无法解析：{reason}{sourceInfo}";
                 return false;
             }
 
@@ -104,7 +113,10 @@ namespace Azcel.Editor
 
             if (!TryValidateByType(value.Type, value.Value, null, null, enumValueMap, out var reason))
             {
-                error = $"[Validate] 全局 {global.Name} 键 {value.Key} 类型 {value.Type} 值 \"{value.Value}\" 无法解析：{reason}";
+                var sourceInfo = string.IsNullOrEmpty(value.SourceExcelPath)
+                    ? ""
+                    : $" (Excel: {value.SourceExcelPath}{(string.IsNullOrEmpty(value.SourceSheetName) ? "" : $", Sheet: {value.SourceSheetName}")}{(value.RowIndex > 0 ? $", 行: {value.RowIndex}" : "")})";
+                error = $"[Validate] 全局 {global.Name} 键 {value.Key} 类型 {value.Type} 值 \"{value.Value}\" 无法解析：{reason}{sourceInfo}";
                 return false;
             }
 

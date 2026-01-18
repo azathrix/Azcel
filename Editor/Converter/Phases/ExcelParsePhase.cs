@@ -25,7 +25,6 @@ namespace Azcel.Editor
         private const string DefaultKeyType = "int";
         private const int DefaultFieldRow = 2;
         private const int DefaultTypeRow = 3;
-        private const int DefaultCommentRow = 4;
         private const int DefaultDataRow = 5;
 
         public UniTask ExecuteAsync(ConvertContext context)
@@ -127,7 +126,7 @@ namespace Azcel.Editor
                 {
                     case "enum":
                     {
-                        var enumDef = ParseEnumTable(sheet, normalizedName, filePath, settings);
+                        var enumDef = ParseEnumTable(sheet, normalizedName, filePath, settings, context);
                         if (!enumDataMap.ContainsKey(enumDef.Name))
                             enumDataMap[enumDef.Name] = new List<(EnumDefinition, int)>();
                         enumDataMap[enumDef.Name].Add((enumDef, depth));
@@ -193,6 +192,8 @@ namespace Azcel.Editor
 
                 foreach (var (def, _) in sorted)
                 {
+                    if (def != merged)
+                        ValidateTableSchema(merged, def, context);
                     foreach (var row in def.Rows)
                     {
                         if (row.Values.TryGetValue(keyField, out var key) && !string.IsNullOrEmpty(key))
@@ -211,6 +212,56 @@ namespace Azcel.Editor
                 merged.Rows.AddRange(rowMap.Values);
                 context.Tables.Add(merged);
             }
+        }
+
+        private static void ValidateTableSchema(TableDefinition baseDef, TableDefinition otherDef, ConvertContext context)
+        {
+            if (baseDef == null || otherDef == null || context == null)
+                return;
+
+            var baseFields = baseDef.Fields
+                .GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            var otherFields = otherDef.Fields
+                .GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var kvp in baseFields)
+            {
+                if (!otherFields.TryGetValue(kvp.Key, out var otherField))
+                    continue;
+
+                var baseField = kvp.Value;
+                if (!string.Equals(baseField.Type, otherField.Type, StringComparison.OrdinalIgnoreCase))
+                {
+                    var baseInfo = BuildFieldSourceInfo(baseField);
+                    var otherInfo = BuildFieldSourceInfo(otherField);
+                    context.AddError($"[Schema] 表 {baseDef.Name} 字段类型冲突: {baseField.Name} 基表={baseField.Type}{baseInfo}，合表={otherField.Type}{otherInfo}");
+                }
+            }
+        }
+
+        private static string BuildFieldSourceInfo(FieldDefinition field)
+        {
+            if (field == null)
+                return "";
+
+            var hasPath = !string.IsNullOrEmpty(field.SourceExcelPath);
+            var hasSheet = !string.IsNullOrEmpty(field.SourceSheetName);
+            if (!hasPath && !hasSheet && field.SourceRowIndex <= 0 && field.SourceColumnIndex <= 0)
+                return "";
+
+            var result = " (";
+            if (hasPath)
+                result += $"Excel: {field.SourceExcelPath}";
+            if (hasSheet)
+                result += $"{(hasPath ? ", " : "")}Sheet: {field.SourceSheetName}";
+            if (field.SourceRowIndex > 0)
+                result += $"{(hasPath || hasSheet ? ", " : "")}行: {field.SourceRowIndex}";
+            if (field.SourceColumnIndex > 0)
+                result += $", 列: {field.SourceColumnIndex}";
+            result += ")";
+            return result;
         }
 
         private void MergeEnums(ConvertContext context, Dictionary<string, List<(EnumDefinition def, int depth)>> dataMap)
@@ -255,18 +306,17 @@ namespace Azcel.Editor
 
         private TableDefinition ParseDataTable(DataTable sheet, string tableName, string filePath, AzcelSettings settings, ConvertContext context)
         {
+            var sourcePath = context?.ResolveOriginalExcelPath(filePath) ?? filePath;
             var table = new TableDefinition
             {
                 Name = tableName,
-                ExcelPath = filePath,
-                KeyField = DefaultKeyField,
-                KeyType = DefaultKeyType,
+                ExcelPath = sourcePath,
+                KeyField = string.IsNullOrWhiteSpace(settings.defaultKeyField) ? DefaultKeyField : settings.defaultKeyField,
+                KeyType = string.IsNullOrWhiteSpace(settings.defaultKeyType) ? DefaultKeyType : settings.defaultKeyType,
                 ArraySeparator = settings.arraySeparator,
                 ObjectSeparator = settings.objectSeparator,
-                FieldRow = DefaultFieldRow,
-                TypeRow = DefaultTypeRow,
-                CommentRow = DefaultCommentRow,
-                DataRow = DefaultDataRow
+                FieldRow = settings.defaultFieldRow > 0 ? settings.defaultFieldRow : DefaultFieldRow,
+                TypeRow = settings.defaultTypeRow > 0 ? settings.defaultTypeRow : DefaultTypeRow,
             };
 
             // 解析配置行参数
@@ -305,27 +355,22 @@ namespace Azcel.Editor
                         break;
                     case "fieldrow": table.FieldRow = int.Parse(value); break;
                     case "typerow": table.TypeRow = int.Parse(value); break;
-                    case "commentrow": table.CommentRow = int.Parse(value); break;
-                    case "datarow": table.DataRow = int.Parse(value); break;
                 }
             }
 
             if (!IsKnownType(table.KeyType))
             {
                 context.AddError(
-                    $"[ExcelParse] 表 {table.Name} 主键类型 {table.KeyType} 未注册 (Excel: {table.ExcelPath})");
+                    $"[ExcelParse] 表 {table.Name} 主键类型 {table.KeyType} 未注册 (Excel: {table.ExcelPath}, Sheet: {sheet.TableName})");
             }
 
             var fieldRowIndex = NormalizeRowIndex(sheet, table.FieldRow - 1);
             var typeRowIndex = NormalizeRowIndex(sheet, table.TypeRow - 1);
-            var dataRowIndex = NormalizeRowIndex(sheet, table.DataRow - 1);
             var typeRowNumber = typeRowIndex + 1;
 
             var commentRowIndex = FindMarkerRow(sheet, "#comment");
-            if (commentRowIndex < 0)
-                commentRowIndex = NormalizeRowIndex(sheet, table.CommentRow - 1);
 
-            var fieldOptionsRowIndex = FindFieldOptionsRow(sheet, fieldRowIndex, dataRowIndex);
+            var fieldOptionsRowIndex = FindFieldOptionsRow(sheet, fieldRowIndex);
 
             if (fieldRowIndex < 0 || fieldRowIndex >= sheet.Rows.Count)
                 return table;
@@ -344,6 +389,15 @@ namespace Azcel.Editor
             var optionsRowHasMarker = optionsRow != null && IsMarkerRow(optionsRow, out var optionsMarker)
                                       && optionsMarker == "#setting";
 
+            var dataStartRow = Math.Max(fieldRowIndex, typeRowIndex) + 1;
+            if (dataStartRow < 0)
+                dataStartRow = 0;
+            var reservedRows = new HashSet<int> { 0, fieldRowIndex, typeRowIndex };
+            if (commentRowIndex >= 0)
+                reservedRows.Add(commentRowIndex);
+            if (fieldOptionsRowIndex >= 0)
+                reservedRows.Add(fieldOptionsRowIndex);
+
             // 解析字段
             for (int col = 0; col < fieldRow.ItemArray.Length; col++)
             {
@@ -355,13 +409,13 @@ namespace Azcel.Editor
                 if (string.IsNullOrEmpty(fieldType))
                 {
                     context.AddError(
-                        $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 未定义类型 (Excel: {table.ExcelPath}, 行: {typeRowNumber}, 列: {col + 1})");
+                        $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 未定义类型 (Excel: {table.ExcelPath}, Sheet: {sheet.TableName}, 行: {typeRowNumber}, 列: {col + 1})");
                     fieldType = "string";
                 }
                 else if (!IsKnownType(fieldType))
                 {
                     context.AddError(
-                        $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 类型 {fieldType} 未注册 (Excel: {table.ExcelPath}, 行: {typeRowNumber}, 列: {col + 1})");
+                        $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 类型 {fieldType} 未注册 (Excel: {table.ExcelPath}, Sheet: {sheet.TableName}, 行: {typeRowNumber}, 列: {col + 1})");
                 }
                 var commentCol = commentRowHasMarker ? col + 1 : col;
                 var comment = commentRow != null && commentCol < commentRow.ItemArray.Length
@@ -376,7 +430,11 @@ namespace Azcel.Editor
                     Type = fieldType ?? "string",
                     Comment = comment ?? "",
                     IsKey = fieldName.Equals(table.KeyField, StringComparison.OrdinalIgnoreCase),
-                    IsIndex = table.IndexFields.Any(x => string.Equals(x, fieldName, StringComparison.OrdinalIgnoreCase))
+                    IsIndex = table.IndexFields.Any(x => string.Equals(x, fieldName, StringComparison.OrdinalIgnoreCase)),
+                    SourceExcelPath = sourcePath,
+                    SourceSheetName = sheet.TableName,
+                    SourceRowIndex = fieldRowIndex + 1,
+                    SourceColumnIndex = col + 1
                 };
 
                 var optionsCol = optionsRowHasMarker ? col + 1 : col;
@@ -402,15 +460,19 @@ namespace Azcel.Editor
             }
 
             // 解析数据行
-            for (int row = dataRowIndex; row < sheet.Rows.Count; row++)
+            for (int row = dataStartRow; row < sheet.Rows.Count; row++)
             {
+                if (reservedRows.Contains(row))
+                    continue;
                 var dataRow = sheet.Rows[row];
                 if (IsMarkerRow(dataRow, out _))
                     continue;
 
                 var rowData = new RowData
                 {
-                    RowIndex = row + 1
+                    RowIndex = row + 1,
+                    SourceExcelPath = sourcePath,
+                    SourceSheetName = sheet.TableName
                 };
                 var hasData = false;
 
@@ -429,12 +491,13 @@ namespace Azcel.Editor
             return table;
         }
 
-        private EnumDefinition ParseEnumTable(DataTable sheet, string enumName, string filePath, AzcelSettings settings)
+        private EnumDefinition ParseEnumTable(DataTable sheet, string enumName, string filePath, AzcelSettings settings, ConvertContext context)
         {
+            var sourcePath = context?.ResolveOriginalExcelPath(filePath) ?? filePath;
             var enumDef = new EnumDefinition
             {
                 Name = enumName,
-                ExcelPath = filePath
+                ExcelPath = sourcePath
             };
 
             for (int row = DefaultDataRow - 1; row < sheet.Rows.Count; row++)
@@ -462,15 +525,16 @@ namespace Azcel.Editor
 
         private GlobalDefinition ParseGlobalTable(DataTable sheet, string globalName, string filePath, AzcelSettings settings, ConvertContext context)
         {
+            var sourcePath = context?.ResolveOriginalExcelPath(filePath) ?? filePath;
             var globalDef = new GlobalDefinition
             {
                 Name = globalName,
-                ExcelPath = filePath
+                ExcelPath = sourcePath
             };
 
             if (!TryResolveGlobalColumns(sheet, out var headerRowIndex, out var keyCol, out var valueCol, out var typeCol, out var commentCol))
             {
-                context.AddError($"[ExcelParse] 全局 {globalName} 未找到列定义行（需要 key/value/type/comment）(Excel: {filePath})");
+                context.AddError($"[ExcelParse] 全局 {globalName} 未找到列定义行（需要 key/value/type/comment）(Excel: {sourcePath}, Sheet: {sheet.TableName})");
                 return globalDef;
             }
 
@@ -498,13 +562,13 @@ namespace Azcel.Editor
                 if (string.IsNullOrEmpty(type))
                 {
                     context.AddError(
-                        $"[ExcelParse] 全局 {globalName} 键 {key} 未定义类型 (Excel: {filePath}, 行: {row + 1})");
+                        $"[ExcelParse] 全局 {globalName} 键 {key} 未定义类型 (Excel: {sourcePath}, Sheet: {sheet.TableName}, 行: {row + 1})");
                     type = "string";
                 }
                 else if (!IsKnownType(type))
                 {
                     context.AddError(
-                        $"[ExcelParse] 全局 {globalName} 键 {key} 类型 {type} 未注册 (Excel: {filePath}, 行: {row + 1})");
+                        $"[ExcelParse] 全局 {globalName} 键 {key} 类型 {type} 未注册 (Excel: {sourcePath}, Sheet: {sheet.TableName}, 行: {row + 1})");
                 }
 
                 globalDef.Values.Add(new GlobalValueDefinition
@@ -512,7 +576,10 @@ namespace Azcel.Editor
                     Key = key,
                     Value = value ?? "",
                     Type = type ?? "string",
-                    Comment = comment ?? ""
+                    Comment = comment ?? "",
+                    RowIndex = row + 1,
+                    SourceExcelPath = sourcePath,
+                    SourceSheetName = sheet.TableName
                 });
             }
 
@@ -625,15 +692,27 @@ namespace Azcel.Editor
             return -1;
         }
 
-        private static int FindFieldOptionsRow(DataTable sheet, int startRow, int dataRowIndex)
+        private static int FindFieldOptionsRow(DataTable sheet, int fieldRowIndex)
         {
             if (sheet == null)
                 return -1;
 
-            var begin = Math.Max(0, startRow + 1);
-            var end = Math.Min(sheet.Rows.Count, dataRowIndex);
+            var begin = fieldRowIndex + 1;
+            if (begin < 0)
+                begin = 0;
+            if (begin > sheet.Rows.Count)
+                begin = sheet.Rows.Count;
 
-            for (int i = begin; i < end; i++)
+            for (int i = begin; i < sheet.Rows.Count; i++)
+            {
+                if (!IsMarkerRow(sheet.Rows[i], out var marker))
+                    continue;
+
+                if (marker == "#setting" && HasFieldOptions(sheet.Rows[i]))
+                    return i;
+            }
+
+            for (int i = 0; i < begin; i++)
             {
                 if (!IsMarkerRow(sheet.Rows[i], out var marker))
                     continue;

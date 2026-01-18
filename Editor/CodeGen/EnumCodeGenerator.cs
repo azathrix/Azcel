@@ -20,8 +20,7 @@ namespace Azcel.Editor
 
             foreach (var value in enumDef.Values)
             {
-                if (!string.IsNullOrEmpty(value.Comment))
-                    sb.AppendLine($"        /// <summary>{value.Comment}</summary>");
+                AppendComment(sb, value.Comment, 8);
                 sb.AppendLine($"        {value.Name} = {value.Value},");
             }
 
@@ -29,6 +28,31 @@ namespace Azcel.Editor
             sb.AppendLine("}");
 
             return sb.ToString();
+        }
+
+        private static void AppendComment(StringBuilder sb, string comment, int indent)
+        {
+            if (string.IsNullOrEmpty(comment))
+                return;
+
+            var pad = new string(' ', indent);
+            sb.AppendLine($"{pad}/// <summary>");
+            var lines = comment.Replace("\r", "").Split('\n');
+            foreach (var line in lines)
+            {
+                var text = EscapeXml(line);
+                sb.AppendLine($"{pad}/// {text}");
+            }
+            sb.AppendLine($"{pad}/// </summary>");
+        }
+
+        private static string EscapeXml(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+            return value.Replace("&", "&amp;")
+                .Replace("<", "&lt;")
+                .Replace(">", "&gt;");
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using Azathrix.Framework.Core;
 using Azathrix.Framework.Core.Pipeline;
 using Azathrix.Framework.Tools;
 using Cysharp.Threading.Tasks;
@@ -17,6 +18,8 @@ namespace Azcel.Editor
     [PipelineDisplayName("Azcel配置转换")]
     public class ConfigConverter : PipelineBase<IConvertPhase, ConvertContext>
     {
+        private static bool _reloadScheduled;
+
         // public ConfigConverter()
         // {
         //     // 添加默认阶段
@@ -51,7 +54,7 @@ namespace Azcel.Editor
             
             if (context.Errors.Count > 0)
             {
-                Log.Error($"[Azcel] 转换完成，但有 {context.Errors.Count} 个错误:");
+                Log.Error($"[Azcel] 转换失败，有 {context.Errors.Count} 个错误:");
                 foreach (var error in context.Errors)
                     Log.Error($"  - {error}");
             }
@@ -63,6 +66,7 @@ namespace Azcel.Editor
                 
                 if (!context.SkipAssetRefresh)
                     AssetDatabase.Refresh();
+                ScheduleEditorReload();
                 Log.Info(
                     $"[Azcel] 转换完成! 表: {context.Tables.Count}, 枚举: {context.Enums.Count}, 全局配置: {context.Globals.Count}");
             }
@@ -243,10 +247,38 @@ namespace Azcel.Editor
             context.TempCodeOutputPath = tempCode;
             context.TempDataOutputPath = tempData;
 
+            CleanupOldTempRoots(keepCount: 3);
+
             var copied = CopyExcelToTemp(settings.excelPaths, tempExcel, context);
             if (!copied)
             {
                 context.AddError("[Azcel] Excel 复制失败，已终止转换。");
+            }
+        }
+
+        private static void CleanupOldTempRoots(int keepCount)
+        {
+            if (keepCount < 0)
+                keepCount = 0;
+
+            var root = Path.Combine("Library", "AzcelTemp");
+            if (!Directory.Exists(root))
+                return;
+
+            var dirs = Directory.GetDirectories(root);
+            Array.Sort(dirs, StringComparer.OrdinalIgnoreCase);
+            Array.Reverse(dirs);
+
+            for (int i = keepCount; i < dirs.Length; i++)
+            {
+                try
+                {
+                    Directory.Delete(dirs[i], true);
+                }
+                catch
+                {
+                    // 忽略清理失败
+                }
             }
         }
 
@@ -300,6 +332,12 @@ namespace Azcel.Editor
             try
             {
                 File.Copy(file, targetPath, true);
+                if (context != null)
+                {
+                    var tempFull = Path.GetFullPath(targetPath);
+                    var originFull = Path.GetFullPath(file);
+                    context.TempExcelPathMap[tempFull] = originFull;
+                }
                 return true;
             }
             catch (Exception e)
@@ -338,6 +376,54 @@ namespace Azcel.Editor
                 if (!string.IsNullOrEmpty(destFolder))
                     Directory.CreateDirectory(destFolder);
                 File.Copy(file, destPath, true);
+            }
+        }
+
+        private static void ScheduleEditorReload()
+        {
+            if (_reloadScheduled)
+                return;
+
+            _reloadScheduled = true;
+            EditorApplication.delayCall += ReloadEditorData;
+        }
+
+        private static void ReloadEditorData()
+        {
+            _reloadScheduled = false;
+            EditorApplication.delayCall -= ReloadEditorData;
+
+            if (!AzathrixFramework.HasSystem<AzcelSystem>())
+            {
+                Log.Warning("[Azcel][Editor] AzcelSystem 未注册，跳过自动加载");
+                return;
+            }
+
+            var azcel = AzathrixFramework.GetSystem<AzcelSystem>();
+            if (azcel == null)
+            {
+                Log.Warning("[Azcel][Editor] AzcelSystem 未创建，跳过自动加载");
+                return;
+            }
+
+            azcel.Clear();
+
+            if (azcel.DataLoader == null)
+                azcel.SetDataLoader(new ResourcesDataLoader());
+
+            azcel.LoadTableRegistry();
+
+            if (azcel.TableLoader == null)
+                azcel.SetTableLoader(BinaryConfigTableLoader.Instance);
+
+            var loader = azcel.DataLoader;
+            foreach (var table in azcel.GetAllTables())
+            {
+                var data = loader.Load(table.ConfigName);
+                if (data != null)
+                    azcel.LoadTable(table, data);
+                else
+                    Log.Warning($"[Azcel][Editor] 表数据缺失: {table.ConfigName}");
             }
         }
     }
