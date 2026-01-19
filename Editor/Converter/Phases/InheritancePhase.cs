@@ -28,7 +28,7 @@ namespace Azcel.Editor
                     continue;
                 }
 
-                // 继承父表字段（插入到开头）
+                // 继承父表字段（追加到末尾，避免打乱子表列顺序）
                 var inheritedFields = parent.Fields
                     .Where(f => !table.Fields.Any(tf => tf.Name == f.Name))
                     .Select(f => new FieldDefinition
@@ -45,7 +45,7 @@ namespace Azcel.Editor
                     })
                     .ToList();
 
-                table.Fields.InsertRange(0, inheritedFields);
+                table.Fields.AddRange(inheritedFields);
 
                 // 继承主键配置
                 if (table.KeyField == "Id" && parent.KeyField != "Id")

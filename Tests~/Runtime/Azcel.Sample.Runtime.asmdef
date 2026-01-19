@@ -2,7 +2,8 @@
     "name": "Azcel.Sample.Runtime",
     "rootNamespace": "Azcel.Sample",
     "references": [
-        "Azcel"
+        "Azcel",
+        "Azathrix.Framework.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

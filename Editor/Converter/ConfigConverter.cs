@@ -19,6 +19,7 @@ namespace Azcel.Editor
     public class ConfigConverter : PipelineBase<IConvertPhase, ConvertContext>
     {
         private static bool _reloadScheduled;
+        private static int _reloadRetryCount;
 
         // public ConfigConverter()
         // {
@@ -395,8 +396,19 @@ namespace Azcel.Editor
 
             if (!AzathrixFramework.HasSystem<AzcelSystem>())
             {
-                Log.Warning("[Azcel][Editor] AzcelSystem 未注册，跳过自动加载");
-                return;
+                if (!TryEnsureEditorAzcelSystem())
+                {
+                    if (_reloadRetryCount < 3)
+                    {
+                        _reloadRetryCount++;
+                        ScheduleEditorReload();
+                    }
+                    else
+                    {
+                        Log.Warning("[Azcel][Editor] AzcelSystem 未注册，跳过自动加载");
+                    }
+                    return;
+                }
             }
 
             var azcel = AzathrixFramework.GetSystem<AzcelSystem>();
@@ -405,6 +417,7 @@ namespace Azcel.Editor
                 Log.Warning("[Azcel][Editor] AzcelSystem 未创建，跳过自动加载");
                 return;
             }
+            _reloadRetryCount = 0;
 
             azcel.Clear();
 
@@ -425,6 +438,29 @@ namespace Azcel.Editor
                 else
                     Log.Warning($"[Azcel][Editor] 表数据缺失: {table.ConfigName}");
             }
+        }
+
+        private static bool TryEnsureEditorAzcelSystem()
+        {
+#if UNITY_EDITOR
+            var manager = AzathrixFramework.EditorRuntimeManager;
+            if (manager == null)
+            {
+                manager = new SystemRuntimeManager { IsEditorMode = true };
+                AzathrixFramework.SetEditorRuntimeManager(manager);
+                AzathrixFramework.MarkEditorStarted();
+            }
+
+            if (!manager.HasSystem<AzcelSystem>())
+            {
+                manager.RegisterSystemAsync<AzcelSystem>().Forget();
+                return false;
+            }
+
+            return true;
+#else
+            return false;
+#endif
         }
     }
 }
