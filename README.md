@@ -74,10 +74,17 @@ npm install com.azathrix.azcel
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| Excel Paths | Excel 文件目录 | Assets/Excel |
+| Excel Paths | Excel 文件目录列表 | Assets/Excel |
 | Code Output Path | 生成代码目录 | Assets/Scripts/Tables |
 | Data Output Path | 数据文件目录 | Assets/Resources/TableData |
 | Code Namespace | 代码命名空间 | Game.Tables |
+| Data Format Id | 数据格式 | binary |
+| Array Separator | 数组分隔符 | \| |
+| Object Separator | 对象分隔符 | , |
+| Default Key Field | 默认主键字段 | Id |
+| Default Key Type | 默认主键类型 | int |
+| Default Field Row | 默认字段行 | 2 |
+| Default Type Row | 默认类型行 | 3 |
 
 ### 2. 创建 Excel 表
 
@@ -87,7 +94,7 @@ npm install com.azathrix.azcel
 |------------|--------|-------|
 | id         | name   | price |
 | int        | string | int   |
-| #id        | #名称  | #价格 |
+| #comment   | 名称   | 价格  |
 | 1          | 苹果   | 10    |
 | 2          | 橘子   | 15    |
 | 3          | 香蕉   | 8     |
@@ -95,7 +102,7 @@ npm install com.azathrix.azcel
 - 第1行：表名（生成的类名）
 - 第2行：字段名
 - 第3行：类型
-- 第4行：`#` 开头为注释行（可选）
+- 第4行：A列为 `#comment` 表示注释行，生成到代码注释
 - 第5行+：数据
 
 **全局配置表** - 键值对形式
@@ -122,13 +129,14 @@ npm install com.azathrix.azcel
 | ItemConfig | index:type |        |       |            |
 |------------|------------|--------|-------|------------|
 | id         | type       | name   | price | tags       |
-| int        | ItemType   | string | int   | string[]   |
+| int        | #ItemType  | string | int   | string[]   |
 | 1001       | Weapon     | 铁剑   | 100   | 新手\|武器 |
 | 1002       | Weapon     | 钢剑   | 200   | 武器       |
 | 2001       | Armor      | 布甲   | 50    | 新手\|防具 |
 | 3001       | Consume    | 红药   | 10    | 消耗品     |
 
 - `index:type` 为 type 字段创建索引，支持 `GetByIndex<ItemConfig>("type", ItemType.Weapon)`
+- `#ItemType` 引用枚举类型，`#` 前缀表示枚举
 - `string[]` 数组类型，使用 `|` 分隔
 
 **带继承的表** - 减少重复配置
@@ -148,12 +156,12 @@ npm install com.azathrix.azcel
 | DropConfig |            |                  |
 |------------|------------|------------------|
 | id         | itemId     | rewards          |
-| int        | ref:ItemConfig | ref:ItemConfig[] |
+| int        | @ItemConfig | @ItemConfig[]   |
 | 1          | 1001       | 1001\|1002\|3001 |
 | 2          | 2001       | 2001\|3001       |
 
-- `ref:ItemConfig` 引用类型，运行时自动解析为对应配置对象
-- `ref:ItemConfig[]` 引用数组
+- `@ItemConfig` 表引用，运行时自动解析为对应配置对象
+- `@ItemConfig[]` 表引用数组
 
 ### 3. 转换配置
 

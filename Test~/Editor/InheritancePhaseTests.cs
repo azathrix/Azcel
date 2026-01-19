@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Threading.Tasks;
 using Azcel.Editor;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
@@ -18,7 +19,7 @@ namespace Azcel.Tests.Editor
         }
 
         [Test]
-        public async UniTask Inherit_Fields_From_Parent()
+        public async Task Inherit_Fields_From_Parent()
         {
             // 父表
             var parent = new TableDefinition { Name = "ItemConfig" };
@@ -34,7 +35,7 @@ namespace Azcel.Tests.Editor
             _context.Tables.Add(parent);
             _context.Tables.Add(child);
 
-            await _phase.ExecuteAsync(_context);
+            await _phase.ExecuteAsync(_context).AsTask();
 
             // 子表应该有 5 个字段：id, name, price (继承) + atk, crit (自己的)
             Assert.AreEqual(5, child.Fields.Count);
@@ -49,7 +50,7 @@ namespace Azcel.Tests.Editor
         }
 
         [Test]
-        public async UniTask Skip_Duplicate_Fields()
+        public async Task Skip_Duplicate_Fields()
         {
             var parent = new TableDefinition { Name = "BaseConfig" };
             parent.Fields.Add(new FieldDefinition { Name = "id", Type = "int" });
@@ -63,7 +64,7 @@ namespace Azcel.Tests.Editor
             _context.Tables.Add(parent);
             _context.Tables.Add(child);
 
-            await _phase.ExecuteAsync(_context);
+            await _phase.ExecuteAsync(_context).AsTask();
 
             // 子表应该有 3 个字段：id (继承) + name (自己的，不重复继承) + value
             Assert.AreEqual(3, child.Fields.Count);
@@ -74,14 +75,14 @@ namespace Azcel.Tests.Editor
         }
 
         [Test]
-        public async UniTask Warn_When_Parent_Not_Found()
+        public async Task Warn_When_Parent_Not_Found()
         {
             var child = new TableDefinition { Name = "OrphanConfig", ParentTable = "NonExistent" };
             child.Fields.Add(new FieldDefinition { Name = "id", Type = "int" });
 
             _context.Tables.Add(child);
 
-            await _phase.ExecuteAsync(_context);
+            await _phase.ExecuteAsync(_context).AsTask();
 
             Assert.AreEqual(1, _context.Warnings.Count);
             Assert.IsTrue(_context.Warnings[0].Contains("NonExistent"));
@@ -89,7 +90,7 @@ namespace Azcel.Tests.Editor
         }
 
         [Test]
-        public async UniTask Inherit_Key_Config()
+        public async Task Inherit_Key_Config()
         {
             var parent = new TableDefinition
             {
@@ -105,7 +106,7 @@ namespace Azcel.Tests.Editor
             _context.Tables.Add(parent);
             _context.Tables.Add(child);
 
-            await _phase.ExecuteAsync(_context);
+            await _phase.ExecuteAsync(_context).AsTask();
 
             // 子表应该继承父表的主键配置
             Assert.AreEqual("uid", child.KeyField);
@@ -113,7 +114,7 @@ namespace Azcel.Tests.Editor
         }
 
         [Test]
-        public async UniTask No_Inherit_When_No_Parent()
+        public async Task No_Inherit_When_No_Parent()
         {
             var table = new TableDefinition { Name = "StandaloneConfig" };
             table.Fields.Add(new FieldDefinition { Name = "id", Type = "int" });
@@ -121,7 +122,7 @@ namespace Azcel.Tests.Editor
 
             _context.Tables.Add(table);
 
-            await _phase.ExecuteAsync(_context);
+            await _phase.ExecuteAsync(_context).AsTask();
 
             // 没有继承，字段数不变
             Assert.AreEqual(2, table.Fields.Count);
@@ -129,7 +130,7 @@ namespace Azcel.Tests.Editor
         }
 
         [Test]
-        public async UniTask Inherit_Index_And_Ref_Properties()
+        public async Task Inherit_Index_And_Ref_Properties()
         {
             var parent = new TableDefinition { Name = "BaseConfig" };
             parent.Fields.Add(new FieldDefinition
@@ -154,7 +155,7 @@ namespace Azcel.Tests.Editor
             _context.Tables.Add(parent);
             _context.Tables.Add(child);
 
-            await _phase.ExecuteAsync(_context);
+            await _phase.ExecuteAsync(_context).AsTask();
 
             // 继承的字段应该保留 Index 和 Ref 属性
             var typeField = child.Fields.First(f => f.Name == "type");
