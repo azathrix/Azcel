@@ -3,6 +3,7 @@
     "rootNamespace": "Azcel.Tests",
     "references": [
         "Azcel",
+        "Azcel.Editor",
         "Azathrix.Framework.Runtime",
         "Azathrix.Framework.Editor",
         "UniTask"
