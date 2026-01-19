@@ -14,8 +14,8 @@
     "samples": [
         {
             "displayName": "Tests",
-            "description": "编辑器下的 Azcel 基础 API 调用测试（不依赖配置转换）",
-            "path": "Test~"
+            "description": "编辑器下的 Azcel 完整流程测试（转换 + 运行加载 + API 覆盖）",
+            "path": "Tests~"
         }
     ]
 }

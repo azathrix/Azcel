@@ -1,12 +1,16 @@
 {
-    "name": "Azcel.Tests.Editor",
-    "rootNamespace": "Azcel.Tests",
+    "name": "Azcel.Sample.Tests",
+    "rootNamespace": "Azcel.Sample.Tests",
     "references": [
         "Azcel",
         "Azcel.Editor",
-        "Azathrix.Framework.Runtime",
+        "Azcel.Sample.Runtime",
+        "Azathrix.Framework",
         "Azathrix.Framework.Editor",
-        "UniTask"
+        "Azathrix.Framework.Runtime",
+        "UniTask",
+        "UnityEditor.TestRunner",
+        "UnityEngine.TestRunner"
     ],
     "includePlatforms": [
         "Editor"
