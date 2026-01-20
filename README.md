@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/AzathrixDev/Azcel"><img src="https://img.shields.io/badge/GitHub-Azcel-black.svg" alt="GitHub"></a>
+  <a href="https://www.npmjs.com/package/com.azathrix.azcel"><img src="https://img.shields.io/npm/v/com.azathrix.azcel.svg" alt="npm"></a>
   <a href="#"><img src="https://img.shields.io/badge/version-1.0.0-green.svg" alt="Version"></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="https://unity.com/"><img src="https://img.shields.io/badge/Unity-6000.3+-black.svg" alt="Unity"></a>
@@ -60,6 +61,11 @@
 npm install com.azathrix.azcel
 ```
 
+### 解析依赖（必需）
+
+Azcel 使用 `ExcelDataReader` 解析 Excel，并通过宏 `AZCEL_EXCEL_READER` 启用解析代码。  
+可使用环境管理器按 `Packages/Azcel/env.json` 安装依赖。
+
 ## 依赖
 
 | 包名 | 版本 |
@@ -71,7 +77,7 @@ npm install com.azathrix.azcel
 
 ### 1. 配置设置
 
-打开 `Project Settings > Azcel配置`：
+打开 `Azathrix > 设置`，选择 `Azcel配置`（或 `Azathrix > Azcel > 配置窗口`）：
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -116,6 +122,10 @@ npm install com.azathrix.azcel
 | Version      | 1.0.0              | string | 版本号   |
 | MaxLevel     | 100                | int    | 最大等级 |
 | Debug        | true               | bool   | 调试模式 |
+
+- `config_type:global` 或 `config_type:keymap` 均可
+- `key/value/type/comment` 行会被扫描识别（不要求固定行）
+- comment 列支持 `comment/注释/备注/说明/desc` 等命名
 
 **枚举表** - 自动生成枚举类型
 
@@ -199,6 +209,7 @@ var weapons = azcel.GetByIndex<ItemConfig>("Type", ItemType.Weapon);
 
 | 参数 | 说明 | 示例 |
 |------|------|------|
+| `config_type` | 配置类型（table/enum/global/keymap） | `config_type:enum` |
 | `key` | 主键字段 | `key:Id` |
 | `keytype` | 主键类型 | `keytype:string` |
 | `index` | 索引字段 | `index:Type,Group` |
@@ -212,12 +223,21 @@ var weapons = azcel.GetByIndex<ItemConfig>("Type", ItemType.Weapon);
 - `#comment` / `#setting` 行位置不固定（扫描到即识别）
 - 任何以 `#` 开头的行都会被跳过
 
+### 字段设置行（#setting）
+
+`#setting` 行用于配置字段选项，例如跳过字段：
+
+| #setting | skip:true |      |      |
+|----------|----------|------|------|
+
+- `skip:true` 会在解析/校验/代码生成/导出时忽略该字段
+
 ### 支持的类型
 
 | 类型 | 示例 |
 |------|------|
-| 基础类型 | `int`, `float`, `string`, `bool`, `long` |
-| Unity 类型 | `Vector2`, `Vector3`, `Color` |
+| 基础类型 | `int`, `long`, `float`, `double`, `bool`, `string` |
+| Unity 类型 | `Vector2`, `Vector3`, `Vector4`, `Vector2Int`, `Vector3Int`, `Color`, `Rect` |
 | 数组 | `int[]`, `string[]` |
 | 枚举 | `ItemType` |
 | 引用 | `@ItemConfig` |
