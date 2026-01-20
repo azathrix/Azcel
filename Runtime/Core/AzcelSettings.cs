@@ -38,6 +38,10 @@ namespace Azcel
         [Tooltip("对象字段分隔符")]
         public string objectSeparator = ",";
 
+        [Header("查询缓存")]
+        [Tooltip("是否启用查询缓存（GetAllConfig/GetByIndex）。默认开启")]
+        public bool useQueryCache = true;
+
         [Header("全局参数")]
         [Tooltip("全局参数（按 key:value 方式提供给表/全局配置回退）")]
         public List<ParamEntry> globalParams = new();

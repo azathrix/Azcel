@@ -211,8 +211,13 @@ namespace Azcel.Editor
             sb.AppendLine("    }");
 
             sb.AppendLine();
-            sb.AppendLine($"    public sealed class {table.Name}Table : ConfigTable<{table.Name}, {keyType}>");
+            var schemaHash = ComputeSchemaHash(table);
+            var schemaFieldCount = GetSerializedFieldCount(table);
+            sb.AppendLine($"    public sealed class {table.Name}Table : ConfigTable<{table.Name}, {keyType}>, IConfigSchemaProvider");
             sb.AppendLine("    {");
+            sb.AppendLine($"        public int SchemaHash => {schemaHash};");
+            sb.AppendLine($"        public int SchemaFieldCount => {schemaFieldCount};");
+            sb.AppendLine();
             if (table.IndexFields.Count > 0)
             {
                 sb.AppendLine("        protected override List<IndexAccessor> CreateIndexAccessors()");
@@ -321,6 +326,56 @@ namespace Azcel.Editor
             return value.Equals("true", System.StringComparison.OrdinalIgnoreCase)
                    || value.Equals("1", System.StringComparison.OrdinalIgnoreCase)
                    || value.Equals("yes", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static int GetSerializedFieldCount(TableDefinition table)
+        {
+            if (table == null)
+                return 0;
+            var count = 0;
+            foreach (var field in table.Fields)
+            {
+                if (IsSkipped(field))
+                    continue;
+                count++;
+            }
+            return count;
+        }
+
+        internal static int ComputeSchemaHash(TableDefinition table)
+        {
+            unchecked
+            {
+                uint hash = 2166136261;
+                hash = HashString(hash, table?.Name ?? string.Empty);
+                if (table != null)
+                {
+                    foreach (var field in table.Fields)
+                    {
+                        if (IsSkipped(field))
+                            continue;
+                        hash = HashString(hash, "|");
+                        hash = HashString(hash, field.Name ?? string.Empty);
+                        hash = HashString(hash, ":");
+                        hash = HashString(hash, field.Type ?? string.Empty);
+                    }
+                }
+                return (int)hash;
+            }
+        }
+
+        private static uint HashString(uint hash, string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return hash;
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                hash ^= value[i];
+                hash *= 16777619;
+            }
+
+            return hash;
         }
     }
 }

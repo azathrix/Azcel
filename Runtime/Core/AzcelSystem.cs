@@ -10,7 +10,7 @@ namespace Azcel
     /// <summary>
     /// Azcel系统 - 统一管理API（通过 AzathrixFramework.GetSystem<AzcelSystem>() 获取）
     /// </summary>
-    public class AzcelSystem : ISystem, ISystemEditorSupport
+    public class AzcelSystem : ISystem, ISystemEditorSupport, ISystemRegister
     {
         private readonly Dictionary<Type, IConfigTable> _tables = new();
         private readonly Dictionary<Type, IConfigTable> _tablesByType = new();
@@ -18,12 +18,28 @@ namespace Azcel
         private IConfigTableLoader _tableLoader;
         private static Dictionary<string, Type> _typeCache;
         private static bool _typeCacheReady;
+        private bool _useQueryCache = true;
 
         /// <summary>当前数据加载器</summary>
         public IDataLoader DataLoader => _dataLoader;
 
         /// <summary>表配置加载器</summary>
         public IConfigTableLoader TableLoader => _tableLoader;
+
+        /// <summary>
+        /// 是否启用查询缓存（GetAllConfig/GetByIndex 等）。
+        /// 默认开启；关闭时会清空缓存并走非缓存路径。
+        /// </summary>
+        public bool UseQueryCache
+        {
+            get => _useQueryCache;
+            set
+            {
+                _useQueryCache = value;
+                if (!_useQueryCache)
+                    ClearAllTableCaches();
+            }
+        }
 
 
         /// <summary>设置数据加载器</summary>
@@ -33,6 +49,17 @@ namespace Azcel
         public void SetTableLoader(IConfigTableLoader loader) => _tableLoader = loader;
 
         public void OnEditorInitialize()
+        {
+        }
+
+        public void OnRegister()
+        {
+            var settings = AzcelSettings.Instance;
+            if (settings != null)
+                UseQueryCache = settings.useQueryCache;
+        }
+
+        public void OnUnRegister()
         {
         }
         //
@@ -111,7 +138,7 @@ namespace Azcel
             if (!_tables.TryGetValue(typeof(TConfig), out var table))
                 return Array.Empty<TConfig>();
 
-            var cached = table.GetAllCached();
+            var cached = UseQueryCache ? table.GetAllCached() : table.GetAll();
             if (cached is IReadOnlyList<TConfig> cachedList)
                 return cachedList;
 
@@ -143,7 +170,7 @@ namespace Azcel
             if (!_tables.TryGetValue(typeof(TConfig), out var table))
                 return Array.Empty<TConfig>();
 
-            var cached = table.GetByIndexCached(indexName, value);
+            var cached = UseQueryCache ? table.GetByIndexCached(indexName, value) : table.GetByIndex(indexName, value);
             if (cached is IReadOnlyList<TConfig> cachedList)
                 return cachedList;
 
@@ -231,6 +258,12 @@ namespace Azcel
             _tablesByType.Clear();
             _dataLoader = null;
             _tableLoader = null;
+        }
+
+        private void ClearAllTableCaches()
+        {
+            foreach (var table in _tables.Values)
+                table?.ClearCache();
         }
 
         /// <summary>

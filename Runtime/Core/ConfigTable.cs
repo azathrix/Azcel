@@ -58,6 +58,15 @@ namespace Azcel
         void BuildIndexes();
     }
 
+    /// <summary>
+    /// 表结构校验信息（用于二进制数据与脚本匹配检查）
+    /// </summary>
+    public interface IConfigSchemaProvider
+    {
+        int SchemaHash { get; }
+        int SchemaFieldCount { get; }
+    }
+
     public interface IConfigTable<TConfig, TKey> : IConfigTable
         where TConfig : ConfigBase<TKey>, new()
     {
@@ -97,12 +106,55 @@ namespace Azcel
             }
 
             using var reader = new BinaryReader(new MemoryStream(data));
-            var count = reader.ReadInt32();
+            var count = 0;
+            var header = reader.ReadInt32();
+            if (header == BinaryConfigHeader.Magic)
+            {
+                var schemaHash = reader.ReadInt32();
+                var fieldCount = reader.ReadInt32();
+                count = reader.ReadInt32();
+                if (table is IConfigSchemaProvider schema)
+                {
+                    if (schema.SchemaHash != 0 && schemaHash != schema.SchemaHash)
+                    {
+                        Log.Error($"[Azcel] Schema mismatch: {table.ConfigName} hash {schemaHash} != {schema.SchemaHash}");
+                        table.BuildIndexes();
+                        return;
+                    }
+
+                    if (schema.SchemaFieldCount > 0 && fieldCount != schema.SchemaFieldCount)
+                    {
+                        Log.Error($"[Azcel] Schema field count mismatch: {table.ConfigName} fields {fieldCount} != {schema.SchemaFieldCount}");
+                        table.BuildIndexes();
+                        return;
+                    }
+                }
+            }
+            else
+            {
+                count = header;
+            }
+
+            if (count < 0)
+            {
+                Log.Error($"[Azcel] Invalid row count in {table.ConfigName}: {count}");
+                table.BuildIndexes();
+                return;
+            }
+
             for (int i = 0; i < count; i++)
             {
-                var config = table.CreateInstance();
-                table.Deserialize(config, reader);
-                table.Add(config);
+                try
+                {
+                    var config = table.CreateInstance();
+                    table.Deserialize(config, reader);
+                    table.Add(config);
+                }
+                catch (Exception e)
+                {
+                    Log.Error($"[Azcel] Deserialize failed: {table.ConfigName} row {i + 1}, {e.Message}");
+                    break;
+                }
             }
 
             table.BuildIndexes();

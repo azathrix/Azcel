@@ -18,6 +18,11 @@ namespace Azcel.Editor
             _stream = File.Create(filePath);
             _writer = new BinaryWriter(_stream);
             var valueWriter = new BinaryValueWriter(_writer);
+            var schemaHash = TableCodeGenerator.ComputeSchemaHash(table);
+            var fieldCount = TableCodeGenerator.GetSerializedFieldCount(table);
+            valueWriter.WriteInt(BinaryConfigHeader.Magic);
+            valueWriter.WriteInt(schemaHash);
+            valueWriter.WriteInt(fieldCount);
             valueWriter.WriteInt(table.Rows.Count);
             return valueWriter;
         }

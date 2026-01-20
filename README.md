@@ -22,9 +22,10 @@
 - **Excel 解析** - 支持多文件、多 Sheet，灵活的行列配置
 - **代码生成** - 自动生成强类型配置类、表类、枚举
 - **数据导出** - Binary 格式，体积小加载快（可扩展 JSON 等）
-- **运行时查询** - 零 GC 的高性能 API
+- **运行时查询** - 高性能 API（含无分配版本 + 可控缓存）
 - **表继承** - 支持配置继承，减少重复数据
 - **索引查询** - 支持自定义索引字段快速查询
+- **Schema 校验** - 二进制数据与脚本字段一致性校验（避免错位读取）
 - **类型扩展** - 可注册自定义类型解析器
 
 ## 安装
@@ -81,6 +82,7 @@ npm install com.azathrix.azcel
 | Data Format Id | 数据格式 | binary |
 | Array Separator | 数组分隔符 | \| |
 | Object Separator | 对象分隔符 | , |
+| Use Query Cache | 查询缓存开关（GetAllConfig/GetByIndex） | true |
 | Default Key Field | 默认主键字段 | Id |
 | Default Key Type | 默认主键类型 | int |
 | Default Field Row | 默认字段行 | 2 |
@@ -102,8 +104,9 @@ npm install com.azathrix.azcel
 - 第1行：表名（生成的类名）
 - 第2行：字段名
 - 第3行：类型
-- 第4行：A列为 `#comment` 表示注释行，生成到代码注释
-- 第5行+：数据
+- `#comment` / `#setting` 行位置不固定（扫描到即识别）
+- 任意以 `#` 开头的行都会被跳过（纯注释行）
+- 数据行可不连续，空行会自动跳过
 
 **全局配置表** - 键值对形式
 
@@ -141,14 +144,14 @@ npm install com.azathrix.azcel
 
 **带继承的表** - 减少重复配置
 
-| WeaponConfig | inherit:ItemConfig |        |      |
+| WeaponConfig | extends:ItemConfig |        |      |
 |--------------|--------------------|--------|------|
 | id           | atk                | crit   | level|
 | int          | int                | float  | int  |
 | 1001         | 50                 | 0.1    | 1    |
 | 1002         | 80                 | 0.15   | 5    |
 
-- `inherit:ItemConfig` 继承 ItemConfig 的所有字段
+- `extends:ItemConfig` 继承 ItemConfig 的所有字段
 - 生成的 WeaponConfig 包含 id, type, name, price, tags, atk, crit, level
 
 **带引用的表** - 关联其他配置
@@ -180,23 +183,34 @@ Debug.Log(item.Name);  // 铁剑
 // 获取全部配置
 var allItems = azcel.GetAllConfig<ItemConfig>();
 
+// 关闭查询缓存（GetAllConfig/GetByIndex 将走非缓存路径）
+azcel.UseQueryCache = false;
+
+// 无分配版本（推荐用于性能敏感场景）
+var allItemsNoAlloc = azcel.GetAllConfig<ItemConfig, int>();
+
 // 按索引查询
 var weapons = azcel.GetByIndex<ItemConfig>("Type", ItemType.Weapon);
 ```
 
 ## Excel 配置语法
 
-### 表头指令
+### 配置行参数（第1行）
 
-| 指令 | 说明 | 示例 |
+| 参数 | 说明 | 示例 |
 |------|------|------|
-| `#config:` | 配置类名 | `#config: ItemConfig` |
-| `#key:` | 主键字段 | `#key: Id` |
-| `#keytype:` | 主键类型 | `#keytype: string` |
-| `#index:` | 索引字段 | `#index: Type` |
-| `#inherit:` | 继承表 | `#inherit: BaseConfig` |
-| `#fieldrow:` | 字段行号 | `#fieldrow: 2` |
-| `#typerow:` | 类型行号 | `#typerow: 3` |
+| `key` | 主键字段 | `key:Id` |
+| `keytype` | 主键类型 | `keytype:string` |
+| `index` | 索引字段 | `index:Type,Group` |
+| `extends` | 继承表 | `extends:BaseConfig` |
+| `fieldrow` | 字段行号 | `fieldrow:2` |
+| `typerow` | 类型行号 | `typerow:3` |
+| `arrayseparator` | 数组分隔符 | `arrayseparator:|` |
+| `objectseparator` | 对象分隔符 | `objectseparator:,` |
+| `field_keymap` | 字段映射 | `field_keymap:true` |
+
+- `#comment` / `#setting` 行位置不固定（扫描到即识别）
+- 任何以 `#` 开头的行都会被跳过
 
 ### 支持的类型
 
@@ -206,7 +220,7 @@ var weapons = azcel.GetByIndex<ItemConfig>("Type", ItemType.Weapon);
 | Unity 类型 | `Vector2`, `Vector3`, `Color` |
 | 数组 | `int[]`, `string[]` |
 | 枚举 | `ItemType` |
-| 引用 | `ref:ItemConfig` |
+| 引用 | `@ItemConfig` |
 
 ### 数组语法
 
@@ -224,22 +238,53 @@ var weapons = azcel.GetByIndex<ItemConfig>("Type", ItemType.Weapon);
 |------|------|
 | `GetConfig<T>(key)` | 通过主键获取配置 |
 | `TryGetConfig<T>(key, out config)` | 尝试获取配置 |
-| `GetAllConfig<T>()` | 获取全部配置 |
-| `GetByIndex<T>(indexName, value)` | 按索引查询 |
+| `GetAllConfig<T>()` | 获取全部配置（可能分配；可受缓存影响） |
+| `GetAllConfig<T, TKey>()` | 获取全部配置（无分配版本） |
+| `GetByIndex<T>(indexName, value)` | 按索引查询（可能分配；可受缓存影响） |
+| `GetByIndex<T, TKey>(indexName, value)` | 按索引查询（无分配版本） |
 | `GetTable<T>()` | 获取表实例 |
+| `UseQueryCache` | 查询缓存开关（默认 true） |
 
 ## 扩展
 
 ### 自定义类型解析器
 
 ```csharp
-[TypeParserPlugin]
-public class MyTypeParser
+// 需要放在 Runtime 程序集下，且有无参构造
+[TypeParserPlugin("MyType")]
+public sealed class MyTypeParser : ITypeParser
 {
-    [TypeParser("MyType")]
-    public static MyType Parse(string value)
+    public string CSharpTypeName => "MyNamespace.MyType";
+    public bool IsValueType => true;
+    public string DefaultValueExpression => "default";
+
+    public object Parse(string value, string separator)
     {
-        return new MyType(value);
+        if (string.IsNullOrEmpty(value))
+            return default(MyType);
+
+        var sep = TypeParserUtil.NormalizeObjectSeparator(separator);
+        var parts = value.Split(sep[0]);
+        var x = parts.Length > 0 ? float.Parse(parts[0]) : 0f;
+        var y = parts.Length > 1 ? float.Parse(parts[1]) : 0f;
+        return new MyType(x, y);
+    }
+
+    public string GenerateBinaryReadCode(string readerExpr)
+        => $"new MyNamespace.MyType({readerExpr}.ReadSingle(), {readerExpr}.ReadSingle())";
+
+    public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
+        => $"{writerExpr}.Write({valueExpr}.X); {writerExpr}.Write({valueExpr}.Y)";
+
+    public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
+    {
+        var v = (MyType)Parse(value, TypeParserUtil.NormalizeObjectSeparator(objectSep));
+        writer.BeginObject();
+        writer.WritePropertyName("x");
+        writer.WriteFloat(v.X);
+        writer.WritePropertyName("y");
+        writer.WriteFloat(v.Y);
+        writer.EndObject();
     }
 }
 ```
@@ -248,17 +293,55 @@ public class MyTypeParser
 
 ```csharp
 [ConfigFormatPlugin("json")]
-public class JsonFormat : IConfigFormat
+public sealed class JsonFormatEditor : IConfigFormat
 {
-    // 实现序列化/反序列化
+    private readonly JsonConfigDataSerializer _serializer = new();
+
+    // 编辑器导出（写入 json/bytes 到 outputPath）
+    public void Serialize(ConvertContext context, string outputPath)
+    {
+        _serializer.Serialize(context, outputPath);
+    }
+
+    // 代码生成（可按需生成 TableRegistry / Loader）
+    public void Generate(ConvertContext context, string outputPath, string codeNamespace)
+    {
+        ConfigCodeGenerator.Generate(context, outputPath, codeNamespace);
+        var bootstrap = RuntimeBootstrapGenerator.Generate(
+            codeNamespace,
+            "Azcel.JsonConfigTableLoader.Instance",
+            context.Tables);
+        File.WriteAllText(Path.Combine(outputPath, "TableRegistry.cs"), bootstrap, Encoding.UTF8);
+    }
 }
 ```
+
+> `JsonConfigDataSerializer` 需要你自行实现（遍历 `context.Tables/Enums/Globals` 写出文件）。  
+> `IConfigFormat` 为编辑器插件，请放在 Editor 程序集中。  
+> 自定义格式通常还需要一个运行时加载器，实现 `IConfigTableLoader` 并在启动时设置：  
+> `azcel.SetTableLoader(JsonConfigTableLoader.Instance);`
 
 ## 转换流程
 
 ```
 Excel → Parse → Merge → Inheritance → Reference → Validation → CodeGen → Export
 ```
+
+## 性能结果（示例）
+
+性能测试网格（100k loops / Editor / rows=5000）
+
+| 测试项 | 次数 | 耗时 | 吞吐 | GC |
+|---|---:|---:|---:|---:|
+| GetAllConfig (cache on) | 100000 | 21 ms | 4.76 M/s | 8.6 MB |
+| GetAllConfig (cache off) | 100000 | 34.6 s | 2.89 K/s | 70.6 MB |
+| GetByIndex (cache on) | 100000 | 31 ms | 3.23 M/s | 8.6 MB |
+| GetByIndex (cache off) | 100000 | 7.11 s | 14.1 K/s | 161.5 MB |
+| GetAllConfig | 100000 | 22 ms | 4.55 M/s | 8.7 MB |
+| GetAllConfigNoAlloc | 100000 | 7 ms | 14.3 M/s | 0 B |
+| GetConfig | 100000 | 16 ms | 6.25 M/s | 0 B |
+| TryGetConfig | 100000 | 17 ms | 5.88 M/s | 0 B |
+| GetByIndex | 100000 | 33 ms | 3.03 M/s | 8.6 MB |
 
 ## License
 
