@@ -9,7 +9,7 @@ namespace Azcel
     /// Azcel 全局配置
     /// </summary>
     [SettingsPath("AzcelSettings")]
-    [ShowSetting("Azcel配置")]
+    [ShowSetting("Azcel")]
     public class AzcelSettings : SettingsBase<AzcelSettings>
     {
         public const string DefaultFormatId = "binary";
