@@ -1,20 +1,20 @@
 ﻿{
     "name": "com.azathrix.azcel",
     "displayName": "Azcel",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "unity": "6000.3",
-    "description": "轻量级的Excel数据表转换和配置管理器",
+    "description": "\u8f7b\u91cf\u7ea7\u7684Excel\u6570\u636e\u8868\u8f6c\u6362\u548c\u914d\u7f6e\u7ba1\u7406\u5668",
     "author": {
         "name": "Azathrix"
     },
     "dependencies": {
-        "com.azathrix.framework": "1.0.0",
+        "com.azathrix.framework": "0.0.8",
         "com.azathrix.unitask": "2.5.10"
     },
     "samples": [
         {
             "displayName": "Tests",
-            "description": "编辑器下的 Azcel 完整流程测试（转换 + 运行加载 + API 覆盖）",
+            "description": "\u7f16\u8f91\u5668\u4e0b\u7684 Azcel \u5b8c\u6574\u6d41\u7a0b\u6d4b\u8bd5\uff08\u8f6c\u6362 + \u8fd0\u884c\u52a0\u8f7d + API \u8986\u76d6\uff09",
             "path": "Tests~"
         }
     ]
