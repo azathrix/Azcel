@@ -1,7 +1,7 @@
 ﻿{
     "name": "com.azathrix.azcel",
     "displayName": "Azcel",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "unity": "6000.3",
     "description": "\u8f7b\u91cf\u7ea7\u7684Excel\u6570\u636e\u8868\u8f6c\u6362\u548c\u914d\u7f6e\u7ba1\u7406\u5668",
     "author": {
@@ -9,7 +9,8 @@
     },
     "dependencies": {
         "com.azathrix.framework": "0.0.8",
-        "com.azathrix.unitask": "2.5.10"
+        "com.azathrix.unitask": "2.5.10",
+        "com.azathrix.environment-installer": "0.0.3"
     },
     "samples": [
         {
