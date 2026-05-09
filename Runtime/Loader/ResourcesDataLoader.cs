@@ -12,7 +12,7 @@ namespace Azcel
 
         public ResourcesDataLoader(string dataPath = null)
         {
-            _dataPath = dataPath ?? AzcelSettings.Instance?.dataOutputPath?.Replace("Assets/Resources/", "") ?? "TableData";
+            _dataPath = NormalizeResourcesPath(dataPath ?? AzcelSettings.Instance?.dataOutputPath) ?? "TableData";
         }
 
         public byte[] Load(string configName)
@@ -20,6 +20,22 @@ namespace Azcel
             var path = $"{_dataPath}/{configName}";
             var asset = AzathrixFramework.ResourcesLoader.Load<TextAsset>(path);
             return asset?.bytes;
+        }
+
+        private static string NormalizeResourcesPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+
+            var normalized = path.Replace('\\', '/').Trim('/');
+            const string resources = "/Resources/";
+            var index = normalized.IndexOf(resources, System.StringComparison.OrdinalIgnoreCase);
+            if (index >= 0)
+                normalized = normalized[(index + resources.Length)..];
+            else if (normalized.StartsWith("Assets/Resources", System.StringComparison.OrdinalIgnoreCase))
+                normalized = normalized["Assets/Resources".Length..].Trim('/');
+
+            return string.IsNullOrEmpty(normalized) ? null : normalized;
         }
     }
 }

@@ -15,7 +15,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Vector2.zero;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Vector2(
                 parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
                 parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0
@@ -50,7 +50,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Vector3.zero;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Vector3(
                 parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
                 parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0,
@@ -88,7 +88,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Vector4.zero;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Vector4(
                 parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
                 parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0,
@@ -129,7 +129,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Vector2Int.zero;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Vector2Int(
                 parts.Length > 0 ? int.Parse(parts[0]) : 0,
                 parts.Length > 1 ? int.Parse(parts[1]) : 0
@@ -164,7 +164,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Vector3Int.zero;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Vector3Int(
                 parts.Length > 0 ? int.Parse(parts[0]) : 0,
                 parts.Length > 1 ? int.Parse(parts[1]) : 0,
@@ -202,7 +202,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Color.white;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Color(
                 parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 1,
                 parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 1,
@@ -243,7 +243,7 @@ namespace Azcel.TypeParsers
         public object Parse(string value, string separator)
         {
             if (string.IsNullOrEmpty(value)) return Rect.zero;
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             return new Rect(
                 parts.Length > 0 ? float.Parse(parts[0], CultureInfo.InvariantCulture) : 0,
                 parts.Length > 1 ? float.Parse(parts[1], CultureInfo.InvariantCulture) : 0,

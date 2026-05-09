@@ -29,8 +29,11 @@ namespace Azcel.Editor
                             continue;
 
                         var raw = row.Values.TryGetValue(field.Name, out var v) ? v : "";
-                        var normalized = NormalizeEnumValue(field.Type, raw, table.ArraySeparator, table.ObjectSeparator, enumValueMap);
-                        var parser = TypeRegistry.Get(field.Type);
+                        var normalizedType = field.IsTableRef && !string.IsNullOrEmpty(field.RefKeyType)
+                            ? field.RefKeyType
+                            : field.Type;
+                        var normalized = NormalizeEnumValue(normalizedType, raw, table.ArraySeparator, table.ObjectSeparator, enumValueMap);
+                        var parser = TypeRegistry.Get(field.Type, field.RefKeyType);
                         if (parser == null)
                         {
                             context.AddError($"[DataExport] 表 {table.Name} 字段 {field.Name} 类型 {field.Type} 未注册");
@@ -110,7 +113,7 @@ namespace Azcel.Editor
             if (type.EndsWith("[]", StringComparison.Ordinal))
             {
                 var elementType = type[..^2];
-                var parts = value.Split(arraySep[0]);
+                var parts = TypeParserUtil.Split(value, arraySep);
                 for (int i = 0; i < parts.Length; i++)
                     parts[i] = NormalizeEnumValue(elementType, parts[i], arraySep, objectSep, enumValueMap);
                 return string.Join(arraySep, parts);

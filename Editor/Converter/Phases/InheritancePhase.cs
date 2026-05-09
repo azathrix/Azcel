@@ -40,12 +40,27 @@ namespace Azcel.Editor
                         IsIndex = f.IsIndex,
                         IsTableRef = f.IsTableRef,
                         RefTableName = f.RefTableName,
+                        RefKeyType = f.RefKeyType,
                         IsEnumRef = f.IsEnumRef,
                         RefEnumName = f.RefEnumName
                     })
                     .ToList();
 
+                foreach (var inherited in inheritedFields)
+                {
+                    var source = parent.Fields.FirstOrDefault(f => f.Name == inherited.Name);
+                    if (source == null)
+                        continue;
+                    foreach (var option in source.Options)
+                        inherited.Options[option.Key] = option.Value;
+                }
+
                 table.Fields.AddRange(inheritedFields);
+                foreach (var index in parent.IndexFields)
+                {
+                    if (!table.IndexFields.Any(x => string.Equals(x, index, System.StringComparison.OrdinalIgnoreCase)))
+                        table.IndexFields.Add(index);
+                }
 
                 // 继承主键配置
                 if (table.KeyField == "Id" && parent.KeyField != "Id")

@@ -58,12 +58,13 @@ namespace Azcel.Editor
                 if (field.IsTableRef)
                 {
                     var idFieldName = $"{field.Name}Id";
+                    var refKeyType = GetRefKeyCSharpType(field);
                     AppendComment(sb, field.Comment, 8);
                     if (table.IndexFields.Contains(field.Name))
                         sb.AppendLine("        [ConfigIndex]");
                     sb.AppendLine($"        private {field.RefTableName} _{field.Name}Cache;");
                     sb.AppendLine($"        private bool _{field.Name}CacheReady;");
-                    sb.AppendLine($"        public int {idFieldName} {{ get; private set; }}");
+                    sb.AppendLine($"        public {refKeyType} {idFieldName} {{ get; private set; }}");
                     sb.AppendLine($"        public {field.RefTableName} {field.Name}");
                     sb.AppendLine("        {");
                     sb.AppendLine("            get");
@@ -103,7 +104,7 @@ namespace Azcel.Editor
                 var isKeyField = keyField != null && field.Name == keyFieldName;
                 if (field.IsTableRef)
                 {
-                    sb.AppendLine($"            {field.Name}Id = reader.ReadInt32();");
+                    sb.AppendLine($"            {field.Name}Id = {readCode};");
                     if (isKeyField)
                         sb.AppendLine($"            Id = {field.Name}Id;");
                 }
@@ -238,7 +239,7 @@ namespace Azcel.Editor
 
                     if (field.IsTableRef)
                     {
-                        valueTypeExpr = "typeof(int)";
+                        valueTypeExpr = $"typeof({GetRefKeyCSharpType(field)})";
                         getterExpr = $"config => config.{field.Name}Id";
                     }
                     else if (isKeyField && keyIsId)
@@ -297,6 +298,11 @@ namespace Azcel.Editor
             return GetCSharpType(field.Type);
         }
 
+        private static string GetRefKeyCSharpType(FieldDefinition field)
+        {
+            return GetCSharpType(string.IsNullOrEmpty(field?.RefKeyType) ? "int" : field.RefKeyType);
+        }
+
         private static string GetCSharpType(string type)
         {
             var parser = TypeRegistry.Get(type);
@@ -308,7 +314,7 @@ namespace Azcel.Editor
             if (field.IsEnumRef)
                 return $"({field.RefEnumName})reader.ReadInt32()";
 
-            var parser = TypeRegistry.Get(field.Type);
+            var parser = TypeRegistry.Get(field.Type, field.RefKeyType);
             return parser?.GenerateBinaryReadCode("reader") ?? "reader.ReadString()";
         }
 

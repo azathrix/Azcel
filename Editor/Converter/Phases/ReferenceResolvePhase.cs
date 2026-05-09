@@ -28,6 +28,10 @@ namespace Azcel.Editor
                         {
                             context.AddError($"表 {table.Name} 的字段 {field.Name} 引用的表 {field.RefTableName} 不存在");
                         }
+                        else
+                        {
+                            field.RefKeyType = refTable.KeyType;
+                        }
                     }
 
                     // 验证枚举引用
@@ -38,6 +42,26 @@ namespace Azcel.Editor
                         {
                             context.AddError($"表 {table.Name} 的字段 {field.Name} 引用的枚举 {field.RefEnumName} 不存在");
                         }
+                    }
+                }
+            }
+
+            foreach (var global in context.Globals)
+            {
+                foreach (var value in global.Values)
+                {
+                    if (value == null || string.IsNullOrEmpty(value.Type) || !value.Type.StartsWith("@"))
+                        continue;
+
+                    var refTableName = value.Type[1..];
+                    var refTable = context.Tables.FirstOrDefault(t => t.Name == refTableName);
+                    if (refTable == null)
+                    {
+                        context.AddError($"全局 {global.Name} 的键 {value.Key} 引用的表 {refTableName} 不存在");
+                    }
+                    else
+                    {
+                        value.RefKeyType = refTable.KeyType;
                     }
                 }
             }

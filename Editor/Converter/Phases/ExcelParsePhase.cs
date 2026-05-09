@@ -392,6 +392,8 @@ namespace Azcel.Editor
                 : null;
             var optionsRowHasMarker = optionsRow != null && IsMarkerRow(optionsRow, out var optionsMarker)
                                       && optionsMarker == "#setting";
+            var commentColumnOffset = GetMarkerRowColumnOffset(commentRow, fieldRow);
+            var optionsColumnOffset = GetMarkerRowColumnOffset(optionsRow, fieldRow);
 
             var dataStartRow = Math.Max(fieldRowIndex, typeRowIndex) + 1;
             if (dataStartRow < 0)
@@ -421,7 +423,7 @@ namespace Azcel.Editor
                     context.AddError(
                         $"[ExcelParse] 表 {table.Name} 字段 {fieldName} 类型 {fieldType} 未注册 (Excel: {table.ExcelPath}, Sheet: {sheet.TableName}, 行: {typeRowNumber}, 列: {col + 1})");
                 }
-                var commentCol = commentRowHasMarker ? col + 1 : col;
+                var commentCol = commentRowHasMarker ? col + commentColumnOffset : col;
                 var comment = commentRow != null && commentCol < commentRow.ItemArray.Length
                     ? commentRow[commentCol]?.ToString()?.Trim()
                     : "";
@@ -441,7 +443,7 @@ namespace Azcel.Editor
                     SourceColumnIndex = col + 1
                 };
 
-                var optionsCol = optionsRowHasMarker ? col + 1 : col;
+                var optionsCol = optionsRowHasMarker ? col + optionsColumnOffset : col;
                 if (optionsRow != null && optionsCol < optionsRow.ItemArray.Length)
                 {
                     var optionRaw = optionsRow[optionsCol]?.ToString()?.Trim();
@@ -480,10 +482,14 @@ namespace Azcel.Editor
                 };
                 var hasData = false;
 
-                for (int col = 0; col < table.Fields.Count && col < dataRow.ItemArray.Length; col++)
+                for (int fieldIndex = 0; fieldIndex < table.Fields.Count; fieldIndex++)
                 {
-                    var value = dataRow[col]?.ToString() ?? "";
-                    rowData.Values[table.Fields[col].Name] = value;
+                    var field = table.Fields[fieldIndex];
+                    var dataCol = field.SourceColumnIndex - 1;
+                    var value = dataCol >= 0 && dataCol < dataRow.ItemArray.Length
+                        ? dataRow[dataCol]?.ToString() ?? ""
+                        : "";
+                    rowData.Values[field.Name] = value;
                     if (!string.IsNullOrEmpty(value))
                         hasData = true;
                 }
@@ -493,6 +499,14 @@ namespace Azcel.Editor
             }
 
             return table;
+        }
+
+        private static int GetMarkerRowColumnOffset(DataRow markerRow, DataRow fieldRow)
+        {
+            if (markerRow == null || fieldRow == null)
+                return 0;
+
+            return markerRow.ItemArray.Length > fieldRow.ItemArray.Length ? 1 : 0;
         }
 
         private EnumDefinition ParseEnumTable(DataTable sheet, string enumName, string filePath, AzcelSettings settings, ConvertContext context)

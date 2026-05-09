@@ -57,10 +57,10 @@ namespace Azcel.Editor
 
         private void OnGUI()
         {
+            DrawToolbar();
+
             if (!EnvDependencyUI.DrawDependencyCheck(_envIds))
                 return;
-
-            DrawToolbar();
 
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
             DrawSettings();
@@ -78,6 +78,9 @@ namespace Azcel.Editor
 
             if (GUILayout.Button("设置", EditorStyles.toolbarButton, GUILayout.Width(50)))
                 Selection.activeObject = AzcelSettings.Instance;
+
+            if (GUILayout.Button("帮助", EditorStyles.toolbarButton, GUILayout.Width(50)))
+                OpenHelpDocument();
 
             EditorGUILayout.EndHorizontal();
         }
@@ -193,6 +196,20 @@ namespace Azcel.Editor
             }
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        [MenuItem("Azathrix/Azcel/格式帮助")]
+        private static void OpenHelpDocument()
+        {
+            const string helpPath = "Packages/Azcel/AzcelHelp.md";
+            var fullPath = Path.Combine(Directory.GetCurrentDirectory(), helpPath);
+            if (!File.Exists(fullPath))
+            {
+                EditorUtility.DisplayDialog("Azcel", $"未找到帮助文档:\n{helpPath}", "确定");
+                return;
+            }
+
+            EditorUtility.OpenWithDefaultApp(fullPath);
         }
 
         private static bool CheckEnvironment(out string message)

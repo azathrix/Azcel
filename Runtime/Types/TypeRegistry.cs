@@ -73,11 +73,20 @@ namespace Azcel
         public static ITypeParser Get(string typeName)
         {
             EnsureScanned();
+            return Get(typeName, null);
+        }
+
+        public static ITypeParser Get(string typeName, string refKeyType)
+        {
+            EnsureScanned();
+            if (string.IsNullOrEmpty(typeName))
+                return null;
+
             // 处理数组类型
             if (typeName.EndsWith("[]"))
             {
                 var elementType = typeName[..^2];
-                var elementParser = Get(elementType);
+                var elementParser = Get(elementType, refKeyType);
                 if (elementParser != null)
                     return new ArrayTypeParser(elementParser);
             }
@@ -86,7 +95,8 @@ namespace Azcel
             if (typeName.StartsWith("@"))
             {
                 var tableName = typeName[1..];
-                return new TableRefTypeParser(tableName);
+                var keyParser = Get(string.IsNullOrEmpty(refKeyType) ? "int" : refKeyType);
+                return new TableRefTypeParser(tableName, keyParser);
             }
 
             // 处理枚举引用 #EnumName

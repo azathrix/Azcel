@@ -186,7 +186,7 @@ namespace Azcel
             if (string.IsNullOrEmpty(value))
                 return Array.CreateInstance(elementType, 0);
 
-            var parts = value.Split(separator[0]);
+            var parts = TypeParserUtil.Split(value, separator);
             var array = Array.CreateInstance(elementType, parts.Length);
             for (int i = 0; i < parts.Length; i++)
                 array.SetValue(_elementParser.Parse(parts[i], separator), i);
@@ -264,7 +264,7 @@ namespace Azcel
                 return;
             }
 
-            var parts = value.Split(arraySep[0]);
+            var parts = TypeParserUtil.Split(value, arraySep);
             writer.BeginArray(parts.Length);
             for (int i = 0; i < parts.Length; i++)
                 _elementParser.Serialize(writer, parts[i], arraySep, objectSep);
@@ -275,10 +275,12 @@ namespace Azcel
     public class TableRefTypeParser : ITypeParser
     {
         private readonly string _tableName;
+        private readonly ITypeParser _keyParser;
 
-        public TableRefTypeParser(string tableName)
+        public TableRefTypeParser(string tableName, ITypeParser keyParser = null)
         {
             _tableName = tableName;
+            _keyParser = keyParser ?? TypeRegistry.Get("int");
         }
 
         public string CSharpTypeName => _tableName;
@@ -288,18 +290,18 @@ namespace Azcel
         public object Parse(string value, string separator)
         {
             // 表引用在运行时解析
-            return string.IsNullOrEmpty(value) ? 0 : int.Parse(value);
+            return _keyParser.Parse(value, separator);
         }
 
         public string GenerateBinaryReadCode(string readerExpr)
-            => $"{readerExpr}.ReadInt32()"; // 读取ID
+            => _keyParser.GenerateBinaryReadCode(readerExpr); // 读取ID
 
         public string GenerateBinaryWriteCode(string writerExpr, string valueExpr)
-            => $"{writerExpr}.Write({valueExpr})"; // 写入ID
+            => _keyParser.GenerateBinaryWriteCode(writerExpr, valueExpr); // 写入ID
 
         public void Serialize(IValueWriter writer, string value, string arraySep, string objectSep)
         {
-            writer.WriteInt(string.IsNullOrEmpty(value) ? 0 : int.Parse(value));
+            _keyParser.Serialize(writer, value, arraySep, objectSep);
         }
     }
 

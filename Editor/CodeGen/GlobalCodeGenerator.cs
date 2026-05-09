@@ -35,7 +35,8 @@ namespace Azcel.Editor
                 {
                     var tableName = value.Type.Substring(1);
                     var idField = $"{value.Key}Id";
-                    sb.AppendLine($"        public static readonly int {idField} = {BuildValueExpression(globalDef, value)};");
+                    var keyType = GetCSharpType(string.IsNullOrEmpty(value.RefKeyType) ? "int" : value.RefKeyType);
+                    sb.AppendLine($"        public static readonly {keyType} {idField} = {BuildValueExpression(globalDef, value)};");
                     sb.AppendLine($"        private static {tableName} _{value.Key}Cache;");
                     sb.AppendLine($"        private static bool _{value.Key}CacheReady;");
                     AppendComment(sb, value.Comment, 8);
@@ -119,13 +120,13 @@ namespace Azcel.Editor
             if (string.IsNullOrEmpty(objectSep))
                 objectSep = AzcelSettings.Instance?.objectSeparator ?? ",";
 
-            if (TryBuildLiteralExpression(type, value, arraySep, objectSep, out var literalExpr))
+            if (TryBuildLiteralExpression(type, value, arraySep, objectSep, valueDef?.RefKeyType, out var literalExpr))
                 return literalExpr;
 
             throw new InvalidOperationException(BuildGlobalLiteralError(globalDef, valueDef));
         }
 
-        private static bool TryBuildLiteralExpression(string type, string rawValue, string arraySep, string objectSep, out string expr)
+        private static bool TryBuildLiteralExpression(string type, string rawValue, string arraySep, string objectSep, string refKeyType, out string expr)
         {
             expr = null;
             if (string.IsNullOrEmpty(type))
@@ -152,21 +153,15 @@ namespace Azcel.Editor
 
             if (IsTableRef(type))
             {
-                if (string.IsNullOrEmpty(rawValue))
-                {
-                    expr = "0";
-                    return true;
-                }
-
-                if (!int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var idValue))
-                    idValue = 0;
-                expr = idValue.ToString(CultureInfo.InvariantCulture);
-                return true;
+                return TryBuildLiteralExpression(string.IsNullOrEmpty(refKeyType) ? "int" : refKeyType,
+                    rawValue, arraySep, objectSep, null, out expr);
             }
 
             if (IsArrayType(type, out var elementType))
             {
-                var elementCSharpType = GetCSharpType(elementType);
+                var elementCSharpType = IsTableRef(elementType)
+                    ? GetCSharpType(string.IsNullOrEmpty(refKeyType) ? "int" : refKeyType)
+                    : GetCSharpType(elementType);
                 if (string.IsNullOrEmpty(rawValue))
                 {
                     expr = $"System.Array.Empty<{elementCSharpType}>()";
@@ -178,7 +173,7 @@ namespace Azcel.Editor
                 sb.Append("new ").Append(elementCSharpType).Append("[] { ");
                 for (int i = 0; i < parts.Length; i++)
                 {
-                    if (!TryBuildLiteralExpression(elementType, parts[i], arraySep, objectSep, out var elementExpr))
+                    if (!TryBuildLiteralExpression(elementType, parts[i], arraySep, objectSep, refKeyType, out var elementExpr))
                         return false;
                     if (i > 0)
                         sb.Append(", ");

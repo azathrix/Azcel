@@ -236,6 +236,7 @@ namespace Azcel.Editor
         public bool IsIndex { get; set; }
         public bool IsTableRef { get; set; }
         public string RefTableName { get; set; }
+        public string RefKeyType { get; set; }
         public bool IsEnumRef { get; set; }
         public string RefEnumName { get; set; }
         public string SourceExcelPath { get; set; }
@@ -296,6 +297,7 @@ namespace Azcel.Editor
         public string Key { get; set; }
         public string Value { get; set; }
         public string Type { get; set; }
+        public string RefKeyType { get; set; }
         public string Comment { get; set; }
         public int RowIndex { get; set; }
         public string SourceExcelPath { get; set; }
